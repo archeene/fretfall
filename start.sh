@@ -11,9 +11,9 @@ echo "🎸 FretFall starting on ${URL}"
 
 # Start a static server in the background
 if command -v python3 >/dev/null 2>&1; then
-  python3 -m http.server "$PORT" --bind 127.0.0.1 >/dev/null 2>&1 &
+  python3 -m http.server "$PORT" --bind 0.0.0.0 >/dev/null 2>&1 &
 elif command -v python >/dev/null 2>&1; then
-  python -m http.server "$PORT" --bind 127.0.0.1 >/dev/null 2>&1 &
+  python -m http.server "$PORT" --bind 0.0.0.0 >/dev/null 2>&1 &
 else
   echo "Need python3 (or python) to serve the app." >&2
   exit 1
