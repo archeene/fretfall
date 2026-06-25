@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FretFall — Guitar Trainer</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo">🎸</span>
+        <span class="title">FretFall</span>
+        <span class="tagline">play along &amp; learn</span>
+      </div>
+      <div class="transport">
+        <button id="btnPlay" class="btn primary">▶ Play</button>
+        <button id="btnRestart" class="btn">⟲ Restart</button>
+        <button id="btnMic" class="btn">🎤 Enable Mic</button>
+        <div class="bpm">
+          <label>BPM <span id="bpmVal">90</span></label>
+          <input id="bpm" type="range" min="40" max="200" value="90" />
+        </div>
+        <div class="bpm">
+          <label>Beats / chord <span id="bpcVal">2</span></label>
+          <input id="bpc" type="range" min="1" max="8" value="2" />
+        </div>
+        <button id="btnLoad" class="btn">📄 Load Tab</button>
+      </div>
+      <div class="scorebox">
+        <div class="score"><span id="score">0</span></div>
+        <div class="combo">Combo <span id="combo">0</span></div>
+        <div class="detected">Heard: <span id="detected">—</span></div>
+      </div>
+    </header>
+
+    <main class="stage">
+      <canvas id="highway"></canvas>
+      <div id="hint" class="hint">
+        <h2>Welcome to FretFall</h2>
+        <p>Press <b>Load Tab</b> to paste chords (Ultimate-Guitar style) or start with the bundled song,
+           then <b>Enable Mic</b> and hit <b>Play</b>. Strum each chord as it crosses the glowing line.</p>
+      </div>
+    </main>
+  </div>
+
+  <!-- Load-tab modal -->
+  <div id="modal" class="modal hidden">
+    <div class="modal-card">
+      <h3>Load a song</h3>
+      <p class="muted">Paste chord/tab text (e.g. copied from an Ultimate-Guitar chords page).
+        Chord lines like <code>G   D   Em   C</code> are detected automatically.</p>
+      <textarea id="tabInput" spellcheck="false" placeholder="Verse:&#10;G            D&#10;I get up in the evening&#10;Em                  C&#10;and I ain't got nothing to say"></textarea>
+      <div class="modal-row">
+        <input id="songTitle" type="text" placeholder="Song title (optional)" />
+        <button id="btnSample" class="btn">Load bundled sample</button>
+      </div>
+      <div class="modal-actions">
+        <button id="btnCancel" class="btn">Cancel</button>
+        <button id="btnImport" class="btn primary">Import &amp; play</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/songs.js"></script>
+  <script src="js/tabParser.js"></script>
+  <script src="js/pitch.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

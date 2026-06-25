@@ -1,0 +1,125 @@
+:root {
+  --bg: #0a0e1a;
+  --bg2: #121a30;
+  --panel: rgba(20, 28, 50, 0.85);
+  --accent: #29e0c8;
+  --accent2: #ff4d8d;
+  --good: #38ef7d;
+  --bad: #ff5b6e;
+  --text: #e8eefc;
+  --muted: #8a96b8;
+  --lane: rgba(255, 255, 255, 0.04);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  background: radial-gradient(1200px 700px at 50% -10%, #1b2750 0%, var(--bg) 60%);
+  color: var(--text);
+  font-family: "Segoe UI", Roboto, system-ui, sans-serif;
+  overflow: hidden;
+}
+
+#app { display: flex; flex-direction: column; height: 100vh; }
+
+/* Top bar */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 12px 20px;
+  background: var(--panel);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  z-index: 5;
+}
+
+.brand { display: flex; align-items: baseline; gap: 10px; }
+.brand .logo { font-size: 26px; }
+.brand .title {
+  font-size: 24px; font-weight: 800; letter-spacing: 0.5px;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.brand .tagline { font-size: 12px; color: var(--muted); }
+
+.transport { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+.btn {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 9px 14px;
+  border-radius: 10px;
+  font-size: 14px; font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.08s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+.btn:hover { background: rgba(255, 255, 255, 0.12); transform: translateY(-1px); }
+.btn:active { transform: translateY(0); }
+.btn.primary {
+  background: linear-gradient(90deg, var(--accent), #1fb8d6);
+  color: #04121a; border-color: transparent;
+  box-shadow: 0 6px 20px rgba(41, 224, 200, 0.35);
+}
+.btn.active { box-shadow: 0 0 0 2px var(--accent) inset; }
+
+.bpm { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--muted); }
+.bpm input { width: 110px; accent-color: var(--accent); }
+
+.scorebox { text-align: right; min-width: 130px; }
+.scorebox .score { font-size: 30px; font-weight: 800; color: var(--accent); line-height: 1; }
+.scorebox .combo { font-size: 12px; color: var(--muted); }
+.scorebox .detected { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.scorebox .detected span { color: var(--accent2); font-weight: 700; }
+
+/* Stage / highway */
+.stage { position: relative; flex: 1; min-height: 0; }
+#highway { display: block; width: 100%; height: 100%; }
+
+.hint {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; text-align: center;
+  gap: 12px; pointer-events: none; padding: 0 40px;
+}
+.hint h2 {
+  font-size: 30px;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.hint p { color: var(--muted); max-width: 560px; line-height: 1.5; }
+.hint.gone { display: none; }
+
+/* Modal */
+.modal {
+  position: fixed; inset: 0; z-index: 50;
+  background: rgba(4, 8, 18, 0.7); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+}
+.modal.hidden { display: none; }
+.modal-card {
+  width: min(680px, 92vw);
+  background: var(--bg2);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5);
+}
+.modal-card h3 { font-size: 20px; margin-bottom: 6px; }
+.muted { color: var(--muted); font-size: 13px; margin-bottom: 12px; line-height: 1.5; }
+.muted code { background: rgba(255, 255, 255, 0.08); padding: 1px 6px; border-radius: 5px; }
+#tabInput {
+  width: 100%; height: 240px; resize: vertical;
+  background: #0b1124; color: var(--text);
+  border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 10px;
+  padding: 12px; font-family: "Cascadia Code", "Courier New", monospace; font-size: 13px;
+  line-height: 1.5;
+}
+.modal-row { display: flex; gap: 10px; margin-top: 12px; }
+.modal-row input {
+  flex: 1; background: #0b1124; color: var(--text);
+  border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 10px; padding: 10px;
+}
+.modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
