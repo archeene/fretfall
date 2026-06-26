@@ -10,8 +10,9 @@
     mode: $("btnMode"), audio: $("btnAudio"), songSelect: $("songSelect"),
     bpm: $("bpm"), bpmVal: $("bpmVal"),
     bpc: $("bpc"), bpcVal: $("bpcVal"),
-    score: $("score"), combo: $("combo"), detected: $("detected"),
+    accuracy: $("accuracy"), hitCount: $("hitCount"), playedCount: $("playedCount"), detected: $("detected"),
     hint: $("hint"), progress: $("progress"), progressFill: $("progressFill"),
+    loopRegion: $("loopRegion"), loopA: $("loopA"), loopB: $("loopB"),
   };
 
   // ---- State ----
@@ -23,12 +24,16 @@
     mode: "chords",     // "chords" | "notes"
     song: null,         // raw song object currently loaded
     chords: [],         // panel chord markers (note mode): {time, name, pcs}
+    loopA: 0,           // practice-loop start (fraction of song)
+    loopB: 1,           // practice-loop end (fraction of song)
     playing: false,
     startClock: 0,      // performance.now() at song t=0
     pausedAt: 0,        // song-time when paused
     score: 0,
     combo: 0,
     maxCombo: 0,
+    hits: 0,            // notes hit correctly so far
+    played: 0,          // notes that have passed the hit line so far
     detector: null,
     micOn: false,
     detectedPC: -1,
@@ -170,6 +175,7 @@
     state.capo = s.capo || 0;
     // Default to Notes mode when the song has a note track; else Chords mode.
     state.mode = (s.notes && s.notes.length) ? "notes" : "chords";
+    state.loopA = 0; state.loopB = 1;   // new song → full-range loop
     buildCurrentTimeline();
     updateModeButton();
     resetPlayback();
@@ -178,14 +184,17 @@
 
   function resetPlayback() {
     state.playing = false;
-    state.pausedAt = 0;
+    const startT = (state.loopA || 0) * (state.songLength || 0);  // restart at loop start
+    state.pausedAt = startT;
     state.score = 0;
     state.combo = 0;
     state.maxCombo = 0;
-    state.notes.forEach((n) => { n.judged = false; n.hit = false; n.flash = 0; });
+    state.hits = 0;
+    state.played = 0;
+    state.notes.forEach((n) => { n.flash = 0; n.hit = false; n.judged = n.time < startT; });
     els.play.textContent = "▶ Play";
     stopAllAudio();
-    state.audioPtr = 0;
+    state.audioPtr = audioPtrFor(startT);
     updateHud();
   }
 
@@ -203,6 +212,9 @@
       els.play.textContent = "▶ Play";
       stopAllAudio();
     } else {
+      // if we're outside the practice loop, start at the loop's beginning
+      const frac = state.songLength ? state.pausedAt / state.songLength : 0;
+      if (frac < state.loopA || frac >= state.loopB) seekTo(state.loopA);
       state.startClock = performance.now() - state.pausedAt * 1000;
       state.playing = true;
       els.play.textContent = "⏸ Pause";
@@ -236,6 +248,7 @@
       if (t > n.time + HIT_WINDOW) {
         n.judged = true; n.hit = false;
         state.combo = 0;
+        state.played++;
         n.flash = 1;
         updateHud();
         continue;
@@ -245,6 +258,7 @@
         // With a capo, the fingered shape sounds `capo` semitones higher than written.
         if (n.pcs.some((pc) => (pc + state.capo) % 12 === state.detectedPC)) {
           n.judged = true; n.hit = true; n.flash = 1;
+          state.hits++; state.played++;
           const closeness = 1 - Math.abs(t - n.time) / HIT_WINDOW;
           state.score += Math.round(50 + 50 * closeness + state.combo * 2);
           state.combo += 1;
@@ -254,6 +268,7 @@
             for (const m of state.notes) {
               if (!m.judged && m.isNote && Math.abs(m.time - n.time) < 0.001) {
                 m.judged = true; m.hit = true; m.flash = 1;
+                state.hits++; state.played++;
               }
             }
           }
@@ -264,8 +279,10 @@
   }
 
   function updateHud() {
-    els.score.textContent = state.score;
-    els.combo.textContent = state.combo;
+    const pct = state.played ? Math.round((100 * state.hits) / state.played) : 100;
+    els.accuracy.textContent = pct + "%";
+    els.hitCount.textContent = state.hits;
+    els.playedCount.textContent = state.played;
     els.detected.textContent = state.detectedName;
   }
 
@@ -670,18 +687,23 @@
   function frame() {
     pollMic();
     if (state.playing) {
-      const t = songTime();
+      let t = songTime();
+      const looping = state.loopA > 0.001 || state.loopB < 0.999;  // region narrowed?
+      if (state.songLength && t >= state.loopB * state.songLength) {
+        if (looping) { seekTo(state.loopA); t = songTime(); }      // jump back to A
+        else { state.playing = false; els.play.textContent = "▶ Play"; }  // play-through ends
+      }
       judge(t);
       if (state.audioOn && state.audioCtx) scheduleAudio(t);
-      if (t > state.songLength) { // song finished
-        state.playing = false;
-        els.play.textContent = "▶ Play";
-      }
     }
-    // song-progress bar
+    // song-progress bar + loop markers
     if (els.progressFill) {
       const frac = state.songLength ? songTime() / state.songLength : 0;
       els.progressFill.style.width = `${Math.max(0, Math.min(1, frac)) * 100}%`;
+      els.loopA.style.left = `${state.loopA * 100}%`;
+      els.loopB.style.left = `${state.loopB * 100}%`;
+      els.loopRegion.style.left = `${state.loopA * 100}%`;
+      els.loopRegion.style.width = `${(state.loopB - state.loopA) * 100}%`;
     }
     draw();
     requestAnimationFrame(frame);
@@ -740,6 +762,27 @@
   els.progress.addEventListener("pointermove", (e) => { if (seeking) seekTo(fracFromEvent(e)); });
   els.progress.addEventListener("pointerup", () => { seeking = false; });
   els.progress.addEventListener("pointercancel", () => { seeking = false; });
+
+  // A–B loop markers: drag each to set the practice region (kept at least 3% apart).
+  const GAP = 0.03;
+  function dragHandle(handle, which) {
+    let on = false;
+    const move = (e) => {
+      if (!on) return;
+      let f = Math.max(0, Math.min(1, fracFromEvent(e)));
+      if (which === "A") state.loopA = Math.min(f, state.loopB - GAP);
+      else state.loopB = Math.max(f, state.loopA + GAP);
+    };
+    handle.addEventListener("pointerdown", (e) => {
+      e.stopPropagation();                 // don't trigger a seek on the bar
+      on = true; handle.setPointerCapture(e.pointerId); move(e);
+    });
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", () => { on = false; });
+    handle.addEventListener("pointercancel", () => { on = false; });
+  }
+  dragHandle(els.loopA, "A");
+  dragHandle(els.loopB, "B");
   els.songSelect.addEventListener("change", () => {
     loadSongByIndex(+els.songSelect.value);
     els.hint.classList.add("gone");
