@@ -8,6 +8,8 @@
     "import": "node import.mjs"
   },
   "dependencies": {
-    "pdf-parse": "^2.1.7"
+    "@anthropic-ai/sdk": "^0.106.0",
+    "pdf-parse": "^2.1.7",
+    "sharp": "^0.35.2"
   }
 }
