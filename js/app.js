@@ -22,6 +22,7 @@
     capo: 0,            // capo fret — shifts matching pitch up by this many semitones
     mode: "chords",     // "chords" | "notes"
     song: null,         // raw song object currently loaded
+    chords: [],         // panel chord markers (note mode): {time, name, pcs}
     playing: false,
     startClock: 0,      // performance.now() at song t=0
     pausedAt: 0,        // song-time when paused
@@ -104,6 +105,7 @@
       lane: c.root % LANES,
       judged: false, hit: false, flash: 0,
     }));
+    state.chords = [];
     finishTimeline();
   }
 
@@ -119,31 +121,28 @@
       groups.get(n.b).push(n);
     }
     const evs = [];
+    const chords = [];   // panel-only chord markers for 3+ simultaneous notes
     for (const [b, members] of groups) {
       const time = LEAD_SECONDS + b * eighth;
-      if (members.length >= 3) {
-        // 3+ notes at once = a strummed chord → one chord event + diagram
+      const inChord = members.length >= 3;
+      if (inChord) {
         const midis = members.map((m) => OPEN_MIDI[m.s] + m.f).sort((a, c) => a - c);
         const pcs = [...new Set(midis.map(midiToPc))];
-        const bassPc = midiToPc(midis[0]);
-        const name = recognizeChord(pcs, bassPc);
+        chords.push({ time, name: recognizeChord(pcs, midiToPc(midis[0])), pcs });
+      }
+      // ALWAYS emit every note individually on the highway
+      for (const m of members) {
+        const midi = OPEN_MIDI[m.s] + m.f;
         evs.push({
-          isNote: false, isChord: true, label: name, name, pcs, midis,
-          lane: bassPc % LANES, time, judged: false, hit: false, flash: 0,
+          isNote: true, inChord, label: String(m.f), pc: midiToPc(midi), pcs: [midiToPc(midi)],
+          string: m.s, fret: m.f, noteName: midiToName(midi), midis: [midi],
+          time, lane: m.s, judged: false, hit: false, flash: 0,
         });
-      } else {
-        for (const m of members) {
-          const midi = OPEN_MIDI[m.s] + m.f;
-          evs.push({
-            isNote: true, label: String(m.f), pc: midiToPc(midi), pcs: [midiToPc(midi)],
-            string: m.s, fret: m.f, noteName: midiToName(midi), midis: [midi],
-            time, lane: m.s, judged: false, hit: false, flash: 0,
-          });
-        }
       }
     }
     evs.sort((a, c) => a.time - c.time || (a.lane || 0) - (c.lane || 0));
     state.notes = evs;
+    state.chords = chords;
     finishTimeline();
   }
 
@@ -374,13 +373,18 @@
     if (ctx.state === "suspended") ctx.resume();
     const LOOKAHEAD = 0.12;
     while (state.audioPtr < state.notes.length && state.notes[state.audioPtr].time <= t + LOOKAHEAD) {
-      const ev = state.notes[state.audioPtr];
-      const when = ctx.currentTime + Math.max(0, ev.time - t);
-      const pitches = pitchesFor(ev);
-      // strum multi-note chords: stagger strings low→high so it sounds plucked, not blocked
+      const t0 = state.notes[state.audioPtr].time;
+      // gather all notes sounding at this exact instant (a chord)
+      const pitches = [];
+      while (state.audioPtr < state.notes.length && Math.abs(state.notes[state.audioPtr].time - t0) < 1e-6) {
+        pitches.push(...pitchesFor(state.notes[state.audioPtr]));
+        state.audioPtr++;
+      }
+      pitches.sort((a, b) => a - b);
+      const when = ctx.currentTime + Math.max(0, t0 - t);
+      // strum simultaneous notes low→high so chords sound plucked, not blocked
       const strum = pitches.length > 1 ? 0.024 : 0;
       pitches.forEach((midi, i) => playPitch(when + i * strum, midi));
-      state.audioPtr++;
     }
     if (state.audioSources.length > 200) state.audioSources = state.audioSources.slice(-100);
   }
@@ -438,26 +442,20 @@
         if (n.flash > 0) n.flash = Math.max(0, n.flash - 0.04);
         continue;
       }
-      // Three block shapes: single note (string lane), chord-group (centered &
-      // wide — it "replaces the row"), and chords-mode chord (its lane).
-      let cx, w, h;
-      if (n.isChord) {
-        cx = HW / 2;
-        w = Math.min(HW * 0.5, laneW * 2.6);
-        h = 46;
-      } else if (n.isNote) {
-        cx = n.lane * laneW + laneW / 2;
-        w = laneW - 16;
+      // Every note is shown individually in its lane; chords are surfaced on the
+      // right panel, not collapsed on the highway.
+      const cx = n.lane * laneW + laneW / 2;
+      const w = laneW - 16;
+      let h;
+      if (n.isNote) {
         const spacingPx = ((60 / state.bpm) / 2) * pxPerSec; // one eighth-note gap
         h = Math.min(w * 0.55, spacingPx * 0.86);
       } else {
-        cx = n.lane * laneW + laneW / 2;
-        w = laneW - 16;
-        h = w * 0.45;
+        h = w * 0.45;   // chords-mode chord block
       }
       const radius = Math.min(w, h) * 0.26;
-      const fontSize = n.isChord ? 24 : Math.round(Math.min(h * 0.55, w * 0.34));
-      const color = n.isChord ? "#ffd166" : LANE_COLORS[n.lane % LANE_COLORS.length];
+      const fontSize = Math.round(Math.min(h * 0.55, w * 0.34));
+      const color = LANE_COLORS[n.lane % LANE_COLORS.length];
 
       ctx.save();
       let alpha = 1;
@@ -510,33 +508,38 @@
     ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
     ctx.fillText("ON SCREEN", px + 16, 28);
 
-    // collect visible events, soonest first
-    const vis = [];
+    const visible = (time) => {
+      const y = hitY - (time - t) * pxPerSec;
+      return y >= 30 && y <= hitY + 22;
+    };
+
+    // Visible items: chord markers (3+ notes) become diagram cards; standalone
+    // notes (not part of a chord) become note cards. Both deduped, soonest first.
+    const items = [];
+    for (const c of (state.chords || [])) {
+      if (visible(c.time)) items.push({ time: c.time, chord: c, active: Math.abs(t - c.time) <= HIT_WINDOW });
+    }
     for (const n of state.notes) {
-      const y = hitY - (n.time - t) * pxPerSec;
-      if (y >= 30 && y <= hitY + 22) vis.push({ n, active: Math.abs(t - n.time) <= HIT_WINDOW });
+      if ((n.isNote && n.inChord) || !visible(n.time)) continue;   // chord notes shown as the chord
+      items.push({ time: n.time, note: n, active: Math.abs(t - n.time) <= HIT_WINDOW });
     }
-    vis.sort((a, b) => a.n.time - b.n.time);
+    items.sort((a, b) => a.time - b.time);
 
-    // De-dup: each distinct chord (by name) or note (by string:fret) appears once.
     const byKey = new Map();
-    for (const v of vis) {
-      const n = v.n;
-      const key = n.isNote ? `n:${n.string}:${n.fret}` : `c:${n.name || n.label}`;
-      if (byKey.has(key)) byKey.get(key).active = byKey.get(key).active || v.active;
-      else byKey.set(key, v);
+    for (const it of items) {
+      const key = it.chord ? `c:${it.chord.name}` : `n:${it.note.string}:${it.note.fret}`;
+      if (byKey.has(key)) byKey.get(key).active = byKey.get(key).active || it.active;
+      else byKey.set(key, it);
     }
 
-    // Stack from the bottom (soonest nearest the hit line); chords are taller
-    // diagram cards, single notes are short cards. Mixed heights = "view both".
+    // Stack from the bottom (soonest nearest the hit line).
     let y = H - 16;
-    for (const v of byKey.values()) {
-      const isNote = v.n.isNote;
-      const slotH = isNote ? 86 : 166;
+    for (const it of byKey.values()) {
+      const slotH = it.chord ? 166 : 86;
       y -= slotH;
       if (y < 40) break;
-      if (isNote) drawNoteCard(px + 20, y, panelW - 40, slotH - 14, v.n, v.active);
-      else drawChordDiagram(px + 20, y, panelW - 40, slotH - 30, v.n.name || v.n.label, v.active);
+      if (it.chord) drawChordDiagram(px + 20, y, panelW - 40, slotH - 30, it.chord.name, it.active);
+      else drawNoteCard(px + 20, y, panelW - 40, slotH - 14, it.note, it.active);
     }
   }
 
