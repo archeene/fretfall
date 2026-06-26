@@ -11,7 +11,7 @@
     bpm: $("bpm"), bpmVal: $("bpmVal"),
     bpc: $("bpc"), bpcVal: $("bpcVal"),
     score: $("score"), combo: $("combo"), detected: $("detected"),
-    hint: $("hint"), progressFill: $("progressFill"),
+    hint: $("hint"), progress: $("progress"), progressFill: $("progressFill"),
   };
 
   // ---- State ----
@@ -53,6 +53,34 @@
   const midiToPc = (m) => ((m % 12) + 12) % 12;
   const midiToName = (m) => PC_NAMES[midiToPc(m)];
 
+  // Identify a chord name from a set of pitch classes (+ the bass pitch class).
+  const QUALITIES = [
+    { q: "", iv: [0, 4, 7] }, { q: "m", iv: [0, 3, 7] },
+    { q: "7", iv: [0, 4, 7, 10] }, { q: "m7", iv: [0, 3, 7, 10] }, { q: "maj7", iv: [0, 4, 7, 11] },
+    { q: "sus4", iv: [0, 5, 7] }, { q: "sus2", iv: [0, 2, 7] },
+    { q: "6", iv: [0, 4, 7, 9] }, { q: "m6", iv: [0, 3, 7, 9] },
+    { q: "add9", iv: [0, 2, 4, 7] }, { q: "dim", iv: [0, 3, 6] }, { q: "aug", iv: [0, 4, 8] },
+    { q: "5", iv: [0, 7] },
+  ];
+  function recognizeChord(pcs, bassPc) {
+    const S = [...new Set(pcs)];
+    let best = null, bestScore = -1;
+    for (let root = 0; root < 12; root++) {
+      for (let qi = 0; qi < QUALITIES.length; qi++) {
+        const tones = QUALITIES[qi].iv.map((i) => (root + i) % 12);
+        if (!S.every((pc) => tones.includes(pc))) continue;   // every played note must be a chord tone
+        const matched = tones.filter((t) => S.includes(t)).length;
+        let score = matched * 10 - (tones.length - S.length) * 3 - qi * 0.1;
+        if (root === bassPc) score += 5;
+        if (score > bestScore) { bestScore = score; best = { root, q: QUALITIES[qi].q, tones }; }
+      }
+    }
+    if (!best) return PC_NAMES[bassPc];
+    let name = PC_NAMES[best.root] + best.q;
+    if (bassPc !== best.root && best.tones.includes(bassPc)) name += "/" + PC_NAMES[bassPc];
+    return name;
+  }
+
   // ---- Canvas sizing (HiDPI aware) ----
   function resize() {
     const dpr = window.devicePixelRatio || 1;
@@ -84,21 +112,38 @@
   // f = fret. Lane = string; pitch class derived from tuning.
   function buildNoteTimeline(song) {
     const eighth = (60 / state.bpm) / 2;   // 6/8 feel: count in eighth notes
-    state.notes = song.notes.map((n) => {
-      const midi = OPEN_MIDI[n.s] + n.f;
-      return {
-        isNote: true,
-        label: String(n.f),
-        pc: midiToPc(midi),
-        pcs: [midiToPc(midi)],
-        string: n.s,
-        fret: n.f,
-        noteName: midiToName(midi),
-        time: LEAD_SECONDS + n.b * eighth,
-        lane: n.s,
-        judged: false, hit: false, flash: 0,
-      };
-    });
+    // group source notes by their beat position (simultaneous notes share `b`)
+    const groups = new Map();
+    for (const n of song.notes) {
+      if (!groups.has(n.b)) groups.set(n.b, []);
+      groups.get(n.b).push(n);
+    }
+    const evs = [];
+    for (const [b, members] of groups) {
+      const time = LEAD_SECONDS + b * eighth;
+      if (members.length >= 3) {
+        // 3+ notes at once = a strummed chord → one chord event + diagram
+        const midis = members.map((m) => OPEN_MIDI[m.s] + m.f).sort((a, c) => a - c);
+        const pcs = [...new Set(midis.map(midiToPc))];
+        const bassPc = midiToPc(midis[0]);
+        const name = recognizeChord(pcs, bassPc);
+        evs.push({
+          isNote: false, isChord: true, label: name, name, pcs, midis,
+          lane: bassPc % LANES, time, judged: false, hit: false, flash: 0,
+        });
+      } else {
+        for (const m of members) {
+          const midi = OPEN_MIDI[m.s] + m.f;
+          evs.push({
+            isNote: true, label: String(m.f), pc: midiToPc(midi), pcs: [midiToPc(midi)],
+            string: m.s, fret: m.f, noteName: midiToName(midi), midis: [midi],
+            time, lane: m.s, judged: false, hit: false, flash: 0,
+          });
+        }
+      }
+    }
+    evs.sort((a, c) => a.time - c.time || (a.lane || 0) - (c.lane || 0));
+    state.notes = evs;
     finishTimeline();
   }
 
@@ -165,6 +210,23 @@
       els.hint.classList.add("gone");
       if (state.audioOn) state.audioPtr = audioPtrFor(songTime());
     }
+  }
+
+  // Seek to a fraction (0..1) of the song — used by the draggable progress bar.
+  function seekTo(frac) {
+    if (!state.songLength) return;
+    const newT = Math.max(0, Math.min(1, frac)) * state.songLength;
+    if (state.playing) state.startClock = performance.now() - newT * 1000;
+    else state.pausedAt = newT;
+    for (const n of state.notes) {
+      n.flash = 0;
+      n.judged = n.time < newT;   // notes before the cursor are "past"
+      n.hit = false;
+    }
+    state.combo = 0;
+    stopAllAudio();
+    state.audioPtr = audioPtrFor(newT);
+    updateHud();
   }
 
   // ---- Scoring ----
@@ -280,10 +342,11 @@
     state.audioSources = [];
   }
 
-  // midi pitches a timeline event should sound (with capo offset)
+  // midi pitches a timeline event should sound (low → high, with capo offset)
   function pitchesFor(ev) {
+    if (ev.midis) return ev.midis.map((m) => m + state.capo).sort((a, b) => a - b);
     if (ev.isNote) return [OPEN_MIDI[ev.string] + ev.fret + state.capo];
-    return ev.pcs.map((pc) => 48 + pc + state.capo); // chord → block voicing in octave 3
+    return ev.pcs.map((pc) => 48 + pc + state.capo).sort((a, b) => a - b); // chord-mode voicing
   }
 
   function playPitch(when, midi) {
@@ -313,7 +376,10 @@
     while (state.audioPtr < state.notes.length && state.notes[state.audioPtr].time <= t + LOOKAHEAD) {
       const ev = state.notes[state.audioPtr];
       const when = ctx.currentTime + Math.max(0, ev.time - t);
-      for (const midi of pitchesFor(ev)) playPitch(when, midi);
+      const pitches = pitchesFor(ev);
+      // strum multi-note chords: stagger strings low→high so it sounds plucked, not blocked
+      const strum = pitches.length > 1 ? 0.024 : 0;
+      pitches.forEach((midi, i) => playPitch(when + i * strum, midi));
       state.audioPtr++;
     }
     if (state.audioSources.length > 200) state.audioSources = state.audioSources.slice(-100);
@@ -372,18 +438,26 @@
         if (n.flash > 0) n.flash = Math.max(0, n.flash - 0.04);
         continue;
       }
-      const cx = n.lane * laneW + laneW / 2;
-      // Fill the lane width; height scales proportionally. In note mode, cap the
-      // height to the note spacing so consecutive same-string notes don't overlap.
-      const w = laneW - 16;
-      let h = w * 0.45;
-      if (n.isNote) {
+      // Three block shapes: single note (string lane), chord-group (centered &
+      // wide — it "replaces the row"), and chords-mode chord (its lane).
+      let cx, w, h;
+      if (n.isChord) {
+        cx = HW / 2;
+        w = Math.min(HW * 0.5, laneW * 2.6);
+        h = 46;
+      } else if (n.isNote) {
+        cx = n.lane * laneW + laneW / 2;
+        w = laneW - 16;
         const spacingPx = ((60 / state.bpm) / 2) * pxPerSec; // one eighth-note gap
         h = Math.min(w * 0.55, spacingPx * 0.86);
+      } else {
+        cx = n.lane * laneW + laneW / 2;
+        w = laneW - 16;
+        h = w * 0.45;
       }
       const radius = Math.min(w, h) * 0.26;
-      const fontSize = Math.round(Math.min(h * 0.55, w * 0.34));
-      const color = LANE_COLORS[n.lane % LANE_COLORS.length];
+      const fontSize = n.isChord ? 24 : Math.round(Math.min(h * 0.55, w * 0.34));
+      const color = n.isChord ? "#ffd166" : LANE_COLORS[n.lane % LANE_COLORS.length];
 
       ctx.save();
       let alpha = 1;
@@ -431,11 +505,10 @@
     ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(px + 0.5, 0); ctx.lineTo(px + 0.5, H); ctx.stroke();
 
-    const notesMode = state.mode === "notes";
     ctx.fillStyle = "rgba(232,238,252,0.5)";
     ctx.font = "700 12px Segoe UI, sans-serif";
     ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
-    ctx.fillText(notesMode ? "NOTES ON SCREEN" : "CHORDS ON SCREEN", px + 16, 28);
+    ctx.fillText("ON SCREEN", px + 16, 28);
 
     // collect visible events, soonest first
     const vis = [];
@@ -445,24 +518,26 @@
     }
     vis.sort((a, b) => a.n.time - b.n.time);
 
-    // De-duplicate so each distinct chord/note appears only once on the panel,
-    // keeping the soonest instance and OR-ing the "active" flag.
+    // De-dup: each distinct chord (by name) or note (by string:fret) appears once.
     const byKey = new Map();
     for (const v of vis) {
-      const key = notesMode ? `${v.n.string}:${v.n.fret}` : v.n.label;
-      if (byKey.has(key)) { byKey.get(key).active = byKey.get(key).active || v.active; }
+      const n = v.n;
+      const key = n.isNote ? `n:${n.string}:${n.fret}` : `c:${n.name || n.label}`;
+      if (byKey.has(key)) byKey.get(key).active = byKey.get(key).active || v.active;
       else byKey.set(key, v);
     }
-    const list = [...byKey.values()];
 
-    const top = 42, bottom = 16;
-    const slotH = notesMode ? 96 : 172;
-    const maxSlots = Math.max(1, Math.floor((H - top - bottom) / slotH));
-    list.slice(0, maxSlots).forEach((v, idx) => {
-      const y0 = H - bottom - (idx + 1) * slotH + 14;   // idx 0 (soonest) -> bottom
-      if (notesMode) drawNoteCard(px + 20, y0, panelW - 40, slotH - 18, v.n, v.active);
-      else drawChordDiagram(px + 20, y0, panelW - 40, slotH - 36, v.n.label, v.active);
-    });
+    // Stack from the bottom (soonest nearest the hit line); chords are taller
+    // diagram cards, single notes are short cards. Mixed heights = "view both".
+    let y = H - 16;
+    for (const v of byKey.values()) {
+      const isNote = v.n.isNote;
+      const slotH = isNote ? 86 : 166;
+      y -= slotH;
+      if (y < 40) break;
+      if (isNote) drawNoteCard(px + 20, y, panelW - 40, slotH - 14, v.n, v.active);
+      else drawChordDiagram(px + 20, y, panelW - 40, slotH - 30, v.n.name || v.n.label, v.active);
+    }
   }
 
   // A compact card for note mode: big note name + which string/fret to play.
@@ -641,6 +716,21 @@
   els.mic.addEventListener("click", toggleMic);
   els.mode.addEventListener("click", toggleMode);
   els.audio.addEventListener("click", toggleAudio);
+
+  // Draggable progress bar (click or drag to scrub through the song).
+  let seeking = false;
+  const fracFromEvent = (e) => {
+    const r = els.progress.getBoundingClientRect();
+    return (e.clientX - r.left) / r.width;
+  };
+  els.progress.addEventListener("pointerdown", (e) => {
+    seeking = true;
+    els.progress.setPointerCapture(e.pointerId);
+    seekTo(fracFromEvent(e));
+  });
+  els.progress.addEventListener("pointermove", (e) => { if (seeking) seekTo(fracFromEvent(e)); });
+  els.progress.addEventListener("pointerup", () => { seeking = false; });
+  els.progress.addEventListener("pointercancel", () => { seeking = false; });
   els.songSelect.addEventListener("change", () => {
     loadSongByIndex(+els.songSelect.value);
     els.hint.classList.add("gone");
