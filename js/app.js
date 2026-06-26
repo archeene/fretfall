@@ -117,10 +117,9 @@
         for (let i = 0; i < strum.length; i++) {
           const tok = strum[i];
           if (tok === "-" || tok === ".") continue;      // rest = no strum
-          const up = tok === "U" || tok === "u";
           evs.push({
-            isNote: false, isStrum: true, name: c.name, label: up ? "↑" : "↓",
-            up, pcs: c.pcs, lane: c.root % LANES,
+            isNote: false, isStrum: true, name: c.name, label: c.name,
+            pcs: c.pcs, lane: c.root % LANES,
             time: t + bar * secPerBar + i * secPerSlot,
             judged: false, hit: false, flash: 0,
           });
