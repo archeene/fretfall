@@ -11,7 +11,7 @@
     bpm: $("bpm"), bpmVal: $("bpmVal"),
     bpc: $("bpc"), bpcVal: $("bpcVal"),
     score: $("score"), combo: $("combo"), detected: $("detected"),
-    hint: $("hint"),
+    hint: $("hint"), progressFill: $("progressFill"),
   };
 
   // ---- State ----
@@ -506,6 +506,11 @@
         state.playing = false;
         els.play.textContent = "▶ Play";
       }
+    }
+    // song-progress bar
+    if (els.progressFill) {
+      const frac = state.songLength ? songTime() / state.songLength : 0;
+      els.progressFill.style.width = `${Math.max(0, Math.min(1, frac)) * 100}%`;
     }
     draw();
     requestAnimationFrame(frame);

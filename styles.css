@@ -92,6 +92,19 @@ html, body {
 .stage { position: relative; flex: 1; min-height: 0; }
 #highway { display: block; width: 100%; height: 100%; }
 
+/* song-progress bar across the very top of the playfield */
+#progress {
+  position: absolute; top: 0; left: 0; right: 0; height: 6px;
+  background: rgba(255, 255, 255, 0.07);
+  z-index: 6; pointer-events: none;
+}
+#progressFill {
+  height: 100%; width: 0%;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  box-shadow: 0 0 10px rgba(41, 224, 200, 0.6);
+  transition: width 0.08s linear;
+}
+
 .hint {
   position: absolute; inset: 0; display: flex; flex-direction: column;
   align-items: center; justify-content: center; text-align: center;
