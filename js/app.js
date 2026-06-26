@@ -110,6 +110,7 @@
       state.startClock = performance.now() - state.pausedAt * 1000;
       state.playing = true;
       els.play.textContent = "⏸ Pause";
+      els.hint.classList.add("gone");
     }
   }
 
@@ -177,9 +178,12 @@
   // ---- Rendering ----
   function draw() {
     const W = state.W, H = state.H;
+    // Reserve a right-hand panel for live chord diagrams.
+    const panelW = Math.max(190, Math.min(300, W * 0.26));
+    const HW = W - panelW;          // highway width
     const hitY = H - 120;
     const pxPerSec = (hitY - 40) / LEAD_SECONDS;
-    const laneW = W / LANES;
+    const laneW = HW / LANES;
     const t = songTime();
 
     ctx.clearRect(0, 0, W, H);
@@ -198,7 +202,7 @@
     ctx.shadowBlur = 24;
     ctx.strokeStyle = "rgba(41,224,200,0.9)";
     ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.moveTo(0, hitY); ctx.lineTo(W, hitY); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, hitY); ctx.lineTo(HW, hitY); ctx.stroke();
     ctx.restore();
 
     // lane hit targets
@@ -252,6 +256,131 @@
       ctx.textAlign = "left";
       const label = state.capo ? `${state.title}   •   Capo ${state.capo}` : state.title;
       ctx.fillText(label, 16, 24);
+    }
+
+    // right-hand chord-diagram panel (drawn last so it sits above note glow)
+    drawChordPanel(HW, panelW, H, hitY, t, pxPerSec);
+  }
+
+  // Right panel: a diagram for every chord currently on the highway, soonest at
+  // the bottom (nearest the hit line), the active chord highlighted.
+  function drawChordPanel(HW, panelW, H, hitY, t, pxPerSec) {
+    const px = HW;
+    ctx.fillStyle = "rgba(8,12,24,0.92)";
+    ctx.fillRect(px, 0, panelW, H);
+    ctx.strokeStyle = "rgba(255,255,255,0.10)";
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(px + 0.5, 0); ctx.lineTo(px + 0.5, H); ctx.stroke();
+
+    ctx.fillStyle = "rgba(232,238,252,0.5)";
+    ctx.font = "700 12px Segoe UI, sans-serif";
+    ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+    ctx.fillText("CHORDS ON SCREEN", px + 16, 28);
+
+    // collect visible chords
+    const vis = [];
+    for (const n of state.notes) {
+      const y = hitY - (n.time - t) * pxPerSec;
+      if (y >= 30 && y <= hitY + 22) {
+        vis.push({ n, active: Math.abs(t - n.time) <= HIT_WINDOW });
+      }
+    }
+    vis.sort((a, b) => a.n.time - b.n.time); // soonest first
+    // collapse consecutive identical chords
+    const list = [];
+    for (const v of vis) {
+      const prev = list[list.length - 1];
+      if (prev && prev.n.name === v.n.name) { prev.active = prev.active || v.active; continue; }
+      list.push(v);
+    }
+
+    const top = 42, bottom = 16, slotH = 172;
+    const maxSlots = Math.max(1, Math.floor((H - top - bottom) / slotH));
+    const dw = panelW - 40, dh = slotH - 36;
+    list.slice(0, maxSlots).forEach((v, idx) => {
+      const y0 = H - bottom - (idx + 1) * slotH + 14;   // idx 0 -> bottom
+      drawChordDiagram(px + 20, y0, dw, dh, v.n.name, v.active);
+    });
+  }
+
+  function drawChordDiagram(x, y, w, h, name, active) {
+    const shape = window.ChordShapes.getChordShape(name);
+    const accent = "#29e0c8";
+
+    // highlight box for the active chord
+    if (active) {
+      ctx.save();
+      ctx.shadowColor = accent; ctx.shadowBlur = 18;
+      ctx.strokeStyle = accent; ctx.lineWidth = 2;
+      roundRect(x - 8, y - 6, w + 16, h + 34, 12); ctx.stroke();
+      ctx.restore();
+    }
+
+    // chord name
+    ctx.fillStyle = active ? accent : "#e8eefc";
+    ctx.font = "800 20px Segoe UI, sans-serif";
+    ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+    ctx.fillText(name, x + w / 2, y + 18);
+
+    if (!shape) {
+      ctx.fillStyle = "rgba(232,238,252,0.4)";
+      ctx.font = "13px Segoe UI, sans-serif";
+      ctx.fillText("(no diagram)", x + w / 2, y + 44);
+      return;
+    }
+
+    const labelH = 30, markerH = 12;
+    const gridLeft = x + 16, gridRight = x + w - 16;
+    const gridTop = y + labelH + markerH;
+    const gridBottom = y + h + 24;
+    const gridW = gridRight - gridLeft;
+    const gridH = gridBottom - gridTop;
+    const stringGap = gridW / 5;
+    const fretGap = gridH / 5;
+    const base = shape.base;
+
+    const lineCol = "rgba(232,238,252,0.55)";
+
+    // base-fret label (for barre chords starting above the nut)
+    if (base > 1) {
+      ctx.fillStyle = "rgba(232,238,252,0.6)";
+      ctx.font = "11px Segoe UI, sans-serif";
+      ctx.textAlign = "right"; ctx.textBaseline = "middle";
+      ctx.fillText(base + "fr", gridLeft - 4, gridTop + fretGap / 2);
+    }
+
+    // frets (horizontal)
+    ctx.strokeStyle = lineCol;
+    for (let f = 0; f <= 5; f++) {
+      const ry = gridTop + f * fretGap;
+      ctx.lineWidth = (f === 0 && base === 1) ? 4 : 1;  // thick nut at open position
+      ctx.beginPath(); ctx.moveTo(gridLeft, ry); ctx.lineTo(gridRight, ry); ctx.stroke();
+    }
+    // strings (vertical)
+    ctx.lineWidth = 1;
+    for (let s = 0; s < 6; s++) {
+      const cx = gridLeft + s * stringGap;
+      ctx.beginPath(); ctx.moveTo(cx, gridTop); ctx.lineTo(cx, gridBottom); ctx.stroke();
+    }
+
+    // markers + finger dots
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    for (let s = 0; s < 6; s++) {
+      const cx = gridLeft + s * stringGap;
+      const v = shape.frets[s];
+      if (v === -1) {
+        ctx.fillStyle = "rgba(232,238,252,0.55)";
+        ctx.font = "12px Segoe UI, sans-serif";
+        ctx.fillText("×", cx, gridTop - 7);
+      } else if (v === 0) {
+        ctx.strokeStyle = "rgba(232,238,252,0.6)"; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(cx, gridTop - 7, 4, 0, Math.PI * 2); ctx.stroke();
+      } else {
+        const rel = v - base + 1;            // 1..5 within the window
+        const dy = gridTop + (rel - 0.5) * fretGap;
+        ctx.fillStyle = active ? accent : "#e8eefc";
+        ctx.beginPath(); ctx.arc(cx, dy, Math.min(8, stringGap * 0.34), 0, Math.PI * 2); ctx.fill();
+      }
     }
   }
 
