@@ -32,6 +32,7 @@
     micOn: false,
     detectedPC: -1,
     detectedName: "—",
+    pcHistory: [],      // recent raw pitch classes, for stability gating
   };
 
   // ---- Layout constants ----
@@ -213,16 +214,22 @@
     }
   }
 
+  const STABLE_FRAMES = 3;   // a note must hold this many frames (~50ms) to count
   function pollMic() {
     if (!state.micOn) return;
     const { freq } = state.detector.detect();
-    if (freq > 0) {
-      state.detectedPC = window.freqToPitchClass(freq);
-      state.detectedName = window.TabParser.pcName(state.detectedPC);
-    } else {
-      state.detectedPC = -1;
-      state.detectedName = "—";
-    }
+    const raw = freq > 0 ? window.freqToPitchClass(freq) : -1;
+
+    state.pcHistory.push(raw);
+    if (state.pcHistory.length > STABLE_FRAMES) state.pcHistory.shift();
+
+    // Confirm a pitch only when the last few frames all agree on a valid note.
+    // This, with the detector's loudness+clarity gates, rejects noise/silence.
+    const stable = state.pcHistory.length === STABLE_FRAMES &&
+      raw >= 0 && state.pcHistory.every((p) => p === raw);
+
+    state.detectedPC = stable ? raw : -1;
+    state.detectedName = stable ? window.TabParser.pcName(raw) : "—";
     els.detected.textContent = state.detectedName;
   }
 

@@ -35,9 +35,17 @@
       this.running = false;
     }
 
-    // Returns { freq, rms } — freq is -1 when no clear pitch / too quiet.
+    // Minimum loudness (RMS) before we even try to detect a pitch. Tunable via
+    // `detector.rmsGate`. Background hum/fan noise sits well below ~0.02.
+    rmsGate = 0.02;
+    // Minimum normalized autocorrelation peak ("clarity", 0..1). A plucked note
+    // scores ~0.85+; broadband noise scores ~0.05-0.2. 0.7 cleanly separates
+    // them. This is the main noise reject.
+    clarityGate = 0.7;
+
+    // Returns { freq, rms, clarity } — freq is -1 when no clear pitch / too quiet.
     detect() {
-      if (!this.running) return { freq: -1, rms: 0 };
+      if (!this.running) return { freq: -1, rms: 0, clarity: 0 };
       const buf = this.buf;
       this.analyser.getFloatTimeDomainData(buf);
       const SIZE = buf.length;
@@ -46,38 +54,40 @@
       let rms = 0;
       for (let i = 0; i < SIZE; i++) rms += buf[i] * buf[i];
       rms = Math.sqrt(rms / SIZE);
-      if (rms < 0.01) return { freq: -1, rms };
+      if (rms < this.rmsGate) return { freq: -1, rms, clarity: 0 };
 
-      // Trim to the loud region
-      let r1 = 0, r2 = SIZE - 1;
-      const thres = 0.2;
-      for (let i = 0; i < SIZE / 2; i++) if (Math.abs(buf[i]) < thres) { r1 = i; break; }
-      for (let i = 1; i < SIZE / 2; i++) if (Math.abs(buf[SIZE - i]) < thres) { r2 = SIZE - i; break; }
-      const b = buf.slice(r1, r2);
-      const n = b.length;
-
-      const c = new Float32Array(n).fill(0);
+      // Autocorrelation over the full frame (lag 0 = total energy)
+      const n = SIZE;
+      const c = new Float32Array(n);
       for (let i = 0; i < n; i++)
-        for (let j = 0; j < n - i; j++) c[i] += b[j] * b[j + i];
+        for (let j = 0; j < n - i; j++) c[i] += buf[j] * buf[j + i];
 
+      const energy = c[0];
+      if (energy <= 0) return { freq: -1, rms, clarity: 0 };
+
+      // Skip the initial downslope, then find the highest peak.
       let d = 0;
       while (d < n - 1 && c[d] > c[d + 1]) d++;
       let maxval = -1, maxpos = -1;
       for (let i = d; i < n; i++) {
         if (c[i] > maxval) { maxval = c[i]; maxpos = i; }
       }
-      let T0 = maxpos;
-      if (T0 <= 0) return { freq: -1, rms };
+      if (maxpos <= 0) return { freq: -1, rms, clarity: 0 };
+
+      // Clarity = peak height relative to zero-lag energy. Rejects noise.
+      const clarity = maxval / energy;
+      if (clarity < this.clarityGate) return { freq: -1, rms, clarity };
 
       // Parabolic interpolation for sub-sample accuracy
+      let T0 = maxpos;
       const x1 = c[T0 - 1] || 0, x2 = c[T0], x3 = c[T0 + 1] || 0;
       const a = (x1 + x3 - 2 * x2) / 2;
       const bb = (x3 - x1) / 2;
       if (a) T0 = T0 - bb / (2 * a);
 
       const freq = this.audioCtx.sampleRate / T0;
-      if (freq < 60 || freq > 1400) return { freq: -1, rms };
-      return { freq, rms };
+      if (freq < 70 || freq > 1200) return { freq: -1, rms, clarity };
+      return { freq, rms, clarity };
     }
   }
 
