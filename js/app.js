@@ -284,22 +284,28 @@
     }
   }
 
-  const STABLE_FRAMES = 3;   // a note must hold this many frames (~50ms) to count
+  const VOTE_WINDOW = 6;   // frames to vote over (~100ms)
+  const VOTE_MIN = 2;      // a pitch class must win at least this many votes
   function pollMic() {
     if (!state.micOn) return;
     const { freq } = state.detector.detect();
     const raw = freq > 0 ? window.freqToPitchClass(freq) : -1;
 
     state.pcHistory.push(raw);
-    if (state.pcHistory.length > STABLE_FRAMES) state.pcHistory.shift();
+    if (state.pcHistory.length > VOTE_WINDOW) state.pcHistory.shift();
 
-    // Confirm a pitch only when the last few frames all agree on a valid note.
-    // This, with the detector's loudness+clarity gates, rejects noise/silence.
-    const stable = state.pcHistory.length === STABLE_FRAMES &&
-      raw >= 0 && state.pcHistory.every((p) => p === raw);
-
-    state.detectedPC = stable ? raw : -1;
-    state.detectedName = stable ? window.TabParser.pcName(raw) : "—";
+    // Majority vote over the recent window: smooths the frame-to-frame jitter of
+    // guitar harmonics while the loudness+clarity gates reject noise/silence.
+    const counts = {};
+    let bestPc = -1, bestN = 0;
+    for (const p of state.pcHistory) {
+      if (p < 0) continue;
+      counts[p] = (counts[p] || 0) + 1;
+      if (counts[p] > bestN) { bestN = counts[p]; bestPc = p; }
+    }
+    const ok = bestN >= VOTE_MIN;
+    state.detectedPC = ok ? bestPc : -1;
+    state.detectedName = ok ? window.TabParser.pcName(bestPc) : "—";
     els.detected.textContent = state.detectedName;
   }
 

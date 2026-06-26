@@ -26,6 +26,9 @@
       this.analyser = this.audioCtx.createAnalyser();
       this.analyser.fftSize = 2048;
       src.connect(this.analyser);
+      // Critical: a freshly created AudioContext can start "suspended", in which
+      // case the analyser only ever sees silence. Resume it (we're in a click).
+      if (this.audioCtx.state === "suspended") await this.audioCtx.resume();
       this.running = true;
     }
 
@@ -37,11 +40,12 @@
 
     // Minimum loudness (RMS) before we even try to detect a pitch. Tunable via
     // `detector.rmsGate`. Background hum/fan noise sits well below ~0.02.
-    rmsGate = 0.02;
+    rmsGate = 0.012;
     // Minimum normalized autocorrelation peak ("clarity", 0..1). A plucked note
-    // scores ~0.85+; broadband noise scores ~0.05-0.2. 0.7 cleanly separates
-    // them. This is the main noise reject.
-    clarityGate = 0.7;
+    // scores ~0.85+; broadband noise scores ~0.05-0.2. A struck chord is less
+    // periodic (~0.5-0.7), so 0.6 lets single notes AND chords register while
+    // still rejecting broadband noise.
+    clarityGate = 0.6;
 
     // Returns { freq, rms, clarity } — freq is -1 when no clear pitch / too quiet.
     detect() {
