@@ -119,8 +119,8 @@
     if (s.bpm) { state.bpm = s.bpm; els.bpm.value = s.bpm; els.bpmVal.textContent = s.bpm; }
     if (s.beatsPerChord) { state.beatsPerChord = s.beatsPerChord; els.bpc.value = s.beatsPerChord; els.bpcVal.textContent = s.beatsPerChord; }
     state.capo = s.capo || 0;
-    // fall back to chords if this song has no note track
-    if (state.mode === "notes" && !(s.notes && s.notes.length)) state.mode = "chords";
+    // Default to Notes mode when the song has a note track; else Chords mode.
+    state.mode = (s.notes && s.notes.length) ? "notes" : "chords";
     buildCurrentTimeline();
     updateModeButton();
     resetPlayback();
