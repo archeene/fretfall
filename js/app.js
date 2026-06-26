@@ -275,14 +275,21 @@
     // notes
     for (const n of state.notes) {
       const y = hitY - (n.time - t) * pxPerSec;
-      if (y < -60 || y > H + 60) {
+      if (y < -110 || y > H + 110) {
         if (n.flash > 0) n.flash = Math.max(0, n.flash - 0.04);
         continue;
       }
       const cx = n.lane * laneW + laneW / 2;
-      // note-mode blocks are small circles (single notes); chords are wide bars
-      const w = n.isNote ? Math.min(laneW - 26, 46) : Math.min(laneW - 18, 120);
-      const h = n.isNote ? 36 : 40;
+      // Fill the lane width; height scales proportionally. In note mode, cap the
+      // height to the note spacing so consecutive same-string notes don't overlap.
+      const w = laneW - 16;
+      let h = w * 0.45;
+      if (n.isNote) {
+        const spacingPx = ((60 / state.bpm) / 2) * pxPerSec; // one eighth-note gap
+        h = Math.min(w * 0.55, spacingPx * 0.86);
+      }
+      const radius = Math.min(w, h) * 0.26;
+      const fontSize = Math.round(Math.min(h * 0.55, w * 0.34));
       const color = LANE_COLORS[n.lane % LANE_COLORS.length];
 
       ctx.save();
@@ -294,12 +301,12 @@
       ctx.shadowColor = n.judged ? (n.hit ? "#38ef7d" : "#ff5b6e") : color;
       ctx.shadowBlur = n.flash > 0 ? 30 : 14;
       ctx.fillStyle = n.judged ? (n.hit ? "#1c6b3a" : "#5e2230") : color;
-      roundRect(cx - w / 2, y - h / 2, w, h, n.isNote ? 18 : 10);
+      roundRect(cx - w / 2, y - h / 2, w, h, radius);
       ctx.fill();
       ctx.restore();
 
       // label: fret number (notes) or chord name (chords)
-      ctx.font = n.isNote ? "800 18px Segoe UI, sans-serif" : "700 18px Segoe UI, sans-serif";
+      ctx.font = `${n.isNote ? 800 : 700} ${fontSize}px Segoe UI, sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillStyle = n.judged ? (n.hit ? "#caffd9" : "#ffd0d6") : "#04121a";
