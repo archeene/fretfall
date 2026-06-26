@@ -28,6 +28,15 @@ opening `index.html` directly as a `file://` will block the mic.)
 5. Tune the feel with the **BPM** and **Beats/chord** sliders.
    Spacebar toggles play/pause.
 
+## Two play modes
+
+- **Chords** — chord blocks fall; the right panel shows the fret diagram for each
+  distinct chord currently on screen (each chord shown once).
+- **Notes** — individual picked notes fall in 6 string-lanes (E A D G B e) with
+  fret numbers, transcribed from a tab; the panel lists which string/fret to play.
+  The **Chords/Notes** button appears for songs that include a note track
+  (e.g. the Hallelujah intro picking).
+
 ## What v1 does
 
 - Parses Ultimate-Guitar–style chord-over-lyrics text into a timed chord chart.

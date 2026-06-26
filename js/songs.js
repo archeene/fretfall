@@ -15,6 +15,22 @@ window.SONGS = [
     bpm: 102,          // ♩ = 102, 6/8 feel
     beatsPerChord: 3,
     capo: 0,           // standard tuning E A D G B E, no capo
+    // Individual-note picking transcribed from the tab PDF (Intro: C Am7 C Am7).
+    // {b: eighth-note index, s: string 0=lowE..5=high-e, f: fret}
+    notes: [
+      // m1 (C):  A3 D2 G0 [e3+B1] G0 A2
+      { b: 0, s: 1, f: 3 }, { b: 1, s: 2, f: 2 }, { b: 2, s: 3, f: 0 },
+      { b: 3, s: 5, f: 3 }, { b: 3, s: 4, f: 1 }, { b: 4, s: 3, f: 0 }, { b: 5, s: 1, f: 2 },
+      // m2 (Am7): A0 D2 G0 [e3+B1] G0 A2
+      { b: 6, s: 1, f: 0 }, { b: 7, s: 2, f: 2 }, { b: 8, s: 3, f: 0 },
+      { b: 9, s: 5, f: 3 }, { b: 9, s: 4, f: 1 }, { b: 10, s: 3, f: 0 }, { b: 11, s: 1, f: 2 },
+      // m3 (C):  A3 D2 G0 [e3+B1] G0 A2
+      { b: 12, s: 1, f: 3 }, { b: 13, s: 2, f: 2 }, { b: 14, s: 3, f: 0 },
+      { b: 15, s: 5, f: 3 }, { b: 15, s: 4, f: 1 }, { b: 16, s: 3, f: 0 }, { b: 17, s: 1, f: 2 },
+      // m4 (Am7): A0 D2 G0 [e3+B1] G0 A2
+      { b: 18, s: 1, f: 0 }, { b: 19, s: 2, f: 2 }, { b: 20, s: 3, f: 0 },
+      { b: 21, s: 5, f: 3 }, { b: 21, s: 4, f: 1 }, { b: 22, s: 3, f: 0 }, { b: 23, s: 1, f: 2 },
+    ],
     text: `Intro:
 C  Am7  C  Am7
 
