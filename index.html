@@ -27,7 +27,10 @@
           <label>Beats / chord <span id="bpcVal">2</span></label>
           <input id="bpc" type="range" min="1" max="8" value="2" />
         </div>
-        <button id="btnLoad" class="btn">📄 Load Tab</button>
+        <div class="songpick">
+          <label>Song</label>
+          <select id="songSelect"></select>
+        </div>
       </div>
       <div class="scorebox">
         <div class="score"><span id="score">0</span></div>
@@ -40,28 +43,10 @@
       <canvas id="highway"></canvas>
       <div id="hint" class="hint">
         <h2>Welcome to FretFall</h2>
-        <p>Press <b>Load Tab</b> to paste chords (Ultimate-Guitar style) or start with the bundled song,
-           then <b>Enable Mic</b> and hit <b>Play</b>. Strum each chord as it crosses the glowing line.</p>
+        <p>Pick a <b>Song</b> from the menu, click <b>Enable Mic</b>, then hit <b>Play</b>.
+           Strum each chord as it crosses the glowing line.</p>
       </div>
     </main>
-  </div>
-
-  <!-- Load-tab modal -->
-  <div id="modal" class="modal hidden">
-    <div class="modal-card">
-      <h3>Load a song</h3>
-      <p class="muted">Paste chord/tab text (e.g. copied from an Ultimate-Guitar chords page).
-        Chord lines like <code>G   D   Em   C</code> are detected automatically.</p>
-      <textarea id="tabInput" spellcheck="false" placeholder="Verse:&#10;G            D&#10;I get up in the evening&#10;Em                  C&#10;and I ain't got nothing to say"></textarea>
-      <div class="modal-row">
-        <input id="songTitle" type="text" placeholder="Song title (optional)" />
-        <button id="btnSample" class="btn">Load bundled sample</button>
-      </div>
-      <div class="modal-actions">
-        <button id="btnCancel" class="btn">Cancel</button>
-        <button id="btnImport" class="btn primary">Import &amp; play</button>
-      </div>
-    </div>
   </div>
 
   <script src="js/songs.js"></script>

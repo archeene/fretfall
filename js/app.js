@@ -7,12 +7,11 @@
   const ctx = canvas.getContext("2d");
   const els = {
     play: $("btnPlay"), restart: $("btnRestart"), mic: $("btnMic"),
-    load: $("btnLoad"), bpm: $("bpm"), bpmVal: $("bpmVal"),
+    songSelect: $("songSelect"),
+    bpm: $("bpm"), bpmVal: $("bpmVal"),
     bpc: $("bpc"), bpcVal: $("bpcVal"),
     score: $("score"), combo: $("combo"), detected: $("detected"),
-    hint: $("hint"), modal: $("modal"), tabInput: $("tabInput"),
-    songTitle: $("songTitle"), sample: $("btnSample"),
-    cancel: $("btnCancel"), import: $("btnImport"),
+    hint: $("hint"),
   };
 
   // ---- State ----
@@ -100,7 +99,7 @@
   }
 
   function togglePlay() {
-    if (!state.notes.length) { openModal(); return; }
+    if (!state.notes.length) return;
     if (state.playing) {
       state.pausedAt = songTime();
       state.playing = false;
@@ -277,16 +276,30 @@
     requestAnimationFrame(frame);
   }
 
-  // ---- Modal ----
-  function openModal() { els.modal.classList.remove("hidden"); els.tabInput.focus(); }
-  function closeModal() { els.modal.classList.add("hidden"); }
+  // ---- Song library ----
+  function populateSongs() {
+    els.songSelect.innerHTML = "";
+    window.SONGS.forEach((s, i) => {
+      const opt = document.createElement("option");
+      opt.value = i;
+      opt.textContent = s.title;
+      els.songSelect.appendChild(opt);
+    });
+  }
+  function loadSongByIndex(i) {
+    const s = window.SONGS[i];
+    if (!s) return;
+    loadSong(s.text, s.title, s.bpm, s.beatsPerChord);
+  }
 
   // ---- Wire up UI ----
   els.play.addEventListener("click", togglePlay);
   els.restart.addEventListener("click", resetPlayback);
   els.mic.addEventListener("click", toggleMic);
-  els.load.addEventListener("click", openModal);
-  els.cancel.addEventListener("click", closeModal);
+  els.songSelect.addEventListener("change", () => {
+    loadSongByIndex(+els.songSelect.value);
+    els.hint.classList.add("gone");
+  });
   els.bpm.addEventListener("input", () => {
     state.bpm = +els.bpm.value; els.bpmVal.textContent = els.bpm.value;
     if (state.notes.length) { rebuildKeepingChords(); }
@@ -301,36 +314,19 @@
     resetPlayback();
   }
 
-  els.sample.addEventListener("click", () => {
-    const s = window.SAMPLE_SONGS["dancing-in-the-dark"];
-    els.tabInput.value = s.text;
-    els.songTitle.value = s.title;
-    els.tabInput.dataset.bpm = s.bpm;
-    els.tabInput.dataset.bpc = s.beatsPerChord;
-  });
-
-  els.import.addEventListener("click", () => {
-    const text = els.tabInput.value.trim();
-    if (!text) { alert("Paste some chords first, or click 'Load bundled sample'."); return; }
-    const bpm = +els.tabInput.dataset.bpm || 0;
-    const bpc = +els.tabInput.dataset.bpc || 0;
-    if (loadSong(text, els.songTitle.value, bpm, bpc)) closeModal();
-  });
-
-  // Spacebar = play/pause
+  // Spacebar = play/pause (ignore when focused in the song menu)
   window.addEventListener("keydown", (e) => {
-    if (e.code === "Space" && els.modal.classList.contains("hidden")) {
+    if (e.code === "Space" && e.target.tagName !== "SELECT") {
       e.preventDefault(); togglePlay();
     }
   });
 
   // ---- Boot ----
   resize();
-  // Pre-load the sample so first-time users can just hit Play.
-  (function preload() {
-    const s = window.SAMPLE_SONGS["dancing-in-the-dark"];
-    loadSong(s.text, s.title, s.bpm, s.beatsPerChord);
-    els.hint.classList.remove("gone"); // keep hint until they interact
-  })();
+  populateSongs();
+  // Load the default (first) song so users can just hit Play.
+  loadSongByIndex(0);
+  els.songSelect.value = 0;
+  els.hint.classList.remove("gone"); // keep hint until they interact
   requestAnimationFrame(frame);
 })();

@@ -1,12 +1,63 @@
-// Bundled sample song(s). Raw text is in the same chord-over-lyrics format
-// you'd copy from an Ultimate-Guitar "chords" page, so it exercises the same
-// parser path as user-pasted tabs.
-window.SAMPLE_SONGS = {
-  "dancing-in-the-dark": {
-    title: "Dancing in the Dark (sample progression)",
+// Song library. Songs are baked into the repo here, so they persist across
+// sessions and devices (served from GitHub Pages). To add a song, append an
+// entry below. `text` is chord-over-lyrics format; only the chord lines matter
+// to the parser, lyrics are kept for readability.
+//
+// The first entry is the default loaded on startup.
+window.SONGS = [
+  {
+    id: "hallelujah",
+    title: "Hallelujah — Jeff Buckley / Leonard Cohen",
+    source: "https://tabs.ultimate-guitar.com/tab/jeff-buckley/hallelujah-guitar-pro-2155367",
+    bpm: 84,
+    beatsPerChord: 3,
+    text: `Verse 1:
+C                 Am
+I heard there was a secret chord
+C                          Am
+That David played and it pleased the Lord
+F            G          C        G
+But you don't really care for music, do you?
+C              F     G
+It goes like this, the fourth, the fifth
+Am               F
+The minor fall, the major lift
+G           E7            Am
+The baffled king composing Hallelujah
+
+Chorus:
+F          Am
+Hallelujah, Hallelujah
+F          C        G    C
+Hallelujah, Hallelujah
+
+Verse 2:
+C                  Am
+Your faith was strong but you needed proof
+C                      Am
+You saw her bathing on the roof
+F           G            C       G
+Her beauty and the moonlight overthrew ya
+C            F        G
+She tied you to a kitchen chair
+Am                 F
+She broke your throne, she cut your hair
+G          E7              Am
+And from your lips she drew the Hallelujah
+
+Chorus:
+F          Am
+Hallelujah, Hallelujah
+F          C        G    C
+Hallelujah, Hallelujah`,
+  },
+
+  {
+    id: "dancing-in-the-dark",
+    title: "Dancing in the Dark — Bruce Springsteen (sample)",
     bpm: 148,
     beatsPerChord: 4,
-    text: `Intro / Verse:
+    text: `Verse:
 B                                  E
 I get up in the evening, and I ain't got nothing to say
 B                                       E
@@ -23,8 +74,9 @@ B              E             F#               B
 This gun's for hire, even if we're just dancing in the dark`,
   },
 
-  "wonderwall": {
-    title: "Wonderwall (sample progression)",
+  {
+    id: "wonderwall",
+    title: "Wonderwall — Oasis (sample)",
     bpm: 87,
     beatsPerChord: 2,
     text: `Verse:
@@ -43,4 +95,4 @@ And all the roads we have to walk are winding
 C        D            Em
 And all the lights that lead us there are blinding`,
   },
-};
+];
