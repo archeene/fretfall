@@ -1,0 +1,13 @@
+{
+  "name": "fretfall-tools",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Dev-time tools for importing Ultimate-Guitar PDFs into the FretFall song library.",
+  "scripts": {
+    "import": "node import.mjs"
+  },
+  "dependencies": {
+    "pdf-parse": "^2.1.7"
+  }
+}

@@ -1,29 +1,41 @@
 // Song library. Songs are baked into the repo here, so they persist across
-// sessions and devices (served from GitHub Pages). To add a song, append an
-// entry below. `text` is chord-over-lyrics format; only the chord lines matter
-// to the parser, lyrics are kept for readability.
+// sessions and devices (served from GitHub Pages).
+//
+// These entries were imported from Ultimate-Guitar PDFs via tools/import.mjs
+// (render → visual transcription). To add more, see tools/README.md.
+// Fields: id, title, source, bpm, beatsPerChord, capo (semitone shift for
+// pitch matching), text (chord-over-lyrics; only chord lines are parsed).
 //
 // The first entry is the default loaded on startup.
 window.SONGS = [
   {
     id: "hallelujah",
-    title: "Hallelujah — Jeff Buckley / Leonard Cohen",
+    title: "Hallelujah — Jeff Buckley",
     source: "https://tabs.ultimate-guitar.com/tab/jeff-buckley/hallelujah-guitar-pro-2155367",
-    bpm: 84,
+    bpm: 102,          // ♩ = 102, 6/8 feel
     beatsPerChord: 3,
-    text: `Verse 1:
+    capo: 0,           // standard tuning E A D G B E, no capo
+    text: `Intro:
+C  Am7  C  Am7
+
+Verse 1:
 C                 Am
 I heard there was a secret chord
 C                          Am
 That David played and it pleased the Lord
-F            G          C        G
-But you don't really care for music, do you?
+F            C
+But you don't really care
+G              C
+for music, do you?
 C              F     G
 It goes like this, the fourth, the fifth
 Am               F
 The minor fall, the major lift
-G           E7            Am
+G           E             Am
 The baffled king composing Hallelujah
+
+Turnaround:
+C/G   F   Am   F   G
 
 Chorus:
 F          Am
@@ -36,63 +48,138 @@ C                  Am
 Your faith was strong but you needed proof
 C                      Am
 You saw her bathing on the roof
-F           G            C       G
-Her beauty and the moonlight overthrew ya
+F          C
+Her beauty and the
+G              C
+moonlight overthrew ya
 C            F        G
 She tied you to a kitchen chair
 Am                 F
 She broke your throne, she cut your hair
-G          E7              Am
+G          E              Am
 And from your lips she drew the Hallelujah
+
+Turnaround:
+C/G   F   Am   F   G
 
 Chorus:
 F          Am
 Hallelujah, Hallelujah
 F          C        G    C
-Hallelujah, Hallelujah`,
+Hallelujah, Hallelujah
+
+Outro:
+F   Am   F   C   G   C`,
   },
 
   {
     id: "dancing-in-the-dark",
-    title: "Dancing in the Dark — Bruce Springsteen (sample)",
+    title: "Dancing in the Dark — Bruce Springsteen",
+    source: "https://tabs.ultimate-guitar.com/tab/bruce-springsteen/dancing-in-the-dark-chords-1087212",
     bpm: 148,
     beatsPerChord: 4,
-    text: `Verse:
-B                                  E
-I get up in the evening, and I ain't got nothing to say
-B                                       E
-I come home in the morning, I go to bed feeling the same way
-F#                         E
-I ain't nothing but tired, man I'm just tired and bored with myself
-B                          E              F#            B
+    capo: 4,           // Capo 4th fret (sounds in E); matching is transposed +4
+    text: `Intro:
+G  Em  G  Em   (2x)
+
+Verse 1:
+G              Em      G
+I get up in the evening
+            Em       G
+and I ain't got nothing to say
+            Em
+I come home in the morning
+G        Em        C
+I go to bed feeling the same way
+              Am    C
+I ain't nothing but tired
+          Am             G
+Man, I'm just tired and bored with myself
+     Em   G        Em            D
 Hey there baby, I could use just a little help
 
 Chorus:
-B           E      F#        B
-You can't start a fire, you can't start a fire without a spark
-B              E             F#               B
-This gun's for hire, even if we're just dancing in the dark`,
-  },
+              C
+You can't start a fire
+          Am   C
+This gun's for hire
+                Am          G
+Even if we're just dancing in the dark
 
-  {
-    id: "wonderwall",
-    title: "Wonderwall — Oasis (sample)",
-    bpm: 87,
-    beatsPerChord: 2,
-    text: `Verse:
-Em7          G
-Today is gonna be the day
-D                  A7sus4
-That they're gonna throw it back to you
-Em7              G
-By now you should've somehow
-D                A7sus4
-Realized what you gotta do
+Verse 2:
+G                 Em      G
+Message keeps getting clearer
+              Em                 G
+Radio's on and I'm moving 'round the place
+              Em
+I check my look in the mirror
+G        Em                      C
+I wanna change my clothes, my hair, my face
+              Am      C
+Man, I ain't getting nowhere
+        Am               G
+I'm just living in a dump like this
+                       Em    G
+There's something happening somewhere
+            Em            D
+Baby, I just know that there is
 
 Chorus:
-C       D        Em
-And all the roads we have to walk are winding
-C        D            Em
-And all the lights that lead us there are blinding`,
+              D
+You can't start a fire
+                          C
+You can't start a fire without a spark
+          Am   C
+This gun's for hire
+                Am          G
+Even if we're just dancing in the dark
+
+Bridge:
+Em                    G
+You sit around getting older
+C                D            Em
+There's a joke here somewhere and it's on me
+                          G
+I'll shake this world off my shoulders
+C                D
+Come on baby, the laugh's on me
+
+Verse 3:
+G                 Em      G
+Stay on the streets of this town
+        Em                  G
+and they'll be carving you up alright
+              Em        G
+They say you gotta stay hungry
+Em                       C
+Hey baby, I'm just about starving tonight
+              Am      C
+I'm dying for some action
+                          Am               G
+I'm sick of sitting 'round here trying to write this book
+       Em      G
+I need a love reaction
+              Em            D
+Come on now baby, gimme just a little look
+
+Chorus:
+    D                                          C
+You can't start a fire sitting 'round crying over a broken heart
+          Am   C
+This gun's for hire
+              Am          D
+Even if we're just dancing in the dark
+                                                  C
+You can't start a fire worrying about your little world falling apart
+          Am   C
+This gun's for hire
+              Am      G   C
+Even if we're just dancing in the dark
+
+Outro:
+              Am          G   C
+Even if we're just dancing in the dark   (2x)
+G
+Hey baby`,
   },
 ];

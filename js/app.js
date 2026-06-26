@@ -19,6 +19,7 @@
     notes: [],          // {time, name, pcs, root, lane, judged, hit}
     bpm: 90,
     beatsPerChord: 2,
+    capo: 0,            // capo fret — shifts matching pitch up by this many semitones
     playing: false,
     startClock: 0,      // performance.now() at song t=0
     pausedAt: 0,        // song-time when paused
@@ -66,7 +67,7 @@
       : 0;
   }
 
-  function loadSong(text, title, bpm, bpc) {
+  function loadSong(text, title, bpm, bpc, capo) {
     const parsed = window.TabParser.parseTab(text);
     if (!parsed.chords.length) {
       alert("No chords detected in that text. Make sure chord lines like 'G  D  Em  C' are present.");
@@ -74,6 +75,7 @@
     }
     if (bpm) { state.bpm = bpm; els.bpm.value = bpm; els.bpmVal.textContent = bpm; }
     if (bpc) { state.beatsPerChord = bpc; els.bpc.value = bpc; els.bpcVal.textContent = bpc; }
+    state.capo = capo || 0;
     buildTimeline(parsed.chords);
     state.title = title || "Untitled";
     resetPlayback();
@@ -125,7 +127,8 @@
       }
       // Inside window and player is sounding a matching tone
       if (Math.abs(t - n.time) <= HIT_WINDOW && state.detectedPC >= 0) {
-        if (n.pcs.includes(state.detectedPC)) {
+        // With a capo, the fingered shape sounds `capo` semitones higher than written.
+        if (n.pcs.some((pc) => (pc + state.capo) % 12 === state.detectedPC)) {
           n.judged = true; n.hit = true; n.flash = 1;
           const closeness = 1 - Math.abs(t - n.time) / HIT_WINDOW;
           state.score += Math.round(50 + 50 * closeness + state.combo * 2);
@@ -247,7 +250,8 @@
       ctx.fillStyle = "rgba(232,238,252,0.6)";
       ctx.font = "600 14px Segoe UI, sans-serif";
       ctx.textAlign = "left";
-      ctx.fillText(state.title, 16, 24);
+      const label = state.capo ? `${state.title}   •   Capo ${state.capo}` : state.title;
+      ctx.fillText(label, 16, 24);
     }
   }
 
@@ -289,7 +293,7 @@
   function loadSongByIndex(i) {
     const s = window.SONGS[i];
     if (!s) return;
-    loadSong(s.text, s.title, s.bpm, s.beatsPerChord);
+    loadSong(s.text, s.title, s.bpm, s.beatsPerChord, s.capo);
   }
 
   // ---- Wire up UI ----
