@@ -7,7 +7,7 @@
   const ctx = canvas.getContext("2d");
   const els = {
     play: $("btnPlay"), restart: $("btnRestart"), mic: $("btnMic"),
-    mode: $("btnMode"), songSelect: $("songSelect"),
+    mode: $("btnMode"), audio: $("btnAudio"), songSelect: $("songSelect"),
     bpm: $("bpm"), bpmVal: $("bpmVal"),
     bpc: $("bpc"), bpcVal: $("bpcVal"),
     score: $("score"), combo: $("combo"), detected: $("detected"),
@@ -33,6 +33,11 @@
     detectedPC: -1,
     detectedName: "—",
     pcHistory: [],      // recent raw pitch classes, for stability gating
+    audioOn: false,     // backing-track playback
+    audioCtx: null,
+    audioMaster: null,
+    audioPtr: 0,        // index into state.notes of the next event to schedule
+    audioSources: [],   // currently sounding oscillators
   };
 
   // ---- Layout constants ----
@@ -135,6 +140,8 @@
     state.maxCombo = 0;
     state.notes.forEach((n) => { n.judged = false; n.hit = false; n.flash = 0; });
     els.play.textContent = "▶ Play";
+    stopAllAudio();
+    state.audioPtr = 0;
     updateHud();
   }
 
@@ -150,11 +157,13 @@
       state.pausedAt = songTime();
       state.playing = false;
       els.play.textContent = "▶ Play";
+      stopAllAudio();
     } else {
       state.startClock = performance.now() - state.pausedAt * 1000;
       state.playing = true;
       els.play.textContent = "⏸ Pause";
       els.hint.classList.add("gone");
+      if (state.audioOn) state.audioPtr = audioPtrFor(songTime());
     }
   }
 
@@ -231,6 +240,83 @@
     state.detectedPC = stable ? raw : -1;
     state.detectedName = stable ? window.TabParser.pcName(raw) : "—";
     els.detected.textContent = state.detectedName;
+  }
+
+  // ---- Backing-track audio (Web Audio synthesis, synced to the transport) ----
+  function toggleAudio() {
+    if (!state.audioCtx) {
+      state.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      state.audioMaster = state.audioCtx.createGain();
+      state.audioMaster.gain.value = 0.22;
+      state.audioMaster.connect(state.audioCtx.destination);
+    }
+    state.audioOn = !state.audioOn;
+    els.audio.textContent = state.audioOn ? "🔊 Audio On" : "🔈 Audio";
+    els.audio.classList.toggle("active", state.audioOn);
+    if (state.audioOn) {
+      state.audioCtx.resume();
+      state.audioPtr = audioPtrFor(songTime());
+    } else {
+      stopAllAudio();
+    }
+  }
+
+  function audioPtrFor(t) {
+    let i = 0;
+    while (i < state.notes.length && state.notes[i].time < t) i++;
+    return i;
+  }
+
+  function stopAllAudio() {
+    if (!state.audioCtx) return;
+    const now = state.audioCtx.currentTime;
+    for (const s of state.audioSources) {
+      try {
+        s.g.gain.cancelScheduledValues(now);
+        s.g.gain.setValueAtTime(0.0001, now);
+        s.osc.stop(now + 0.03);
+      } catch (e) { /* already stopped */ }
+    }
+    state.audioSources = [];
+  }
+
+  // midi pitches a timeline event should sound (with capo offset)
+  function pitchesFor(ev) {
+    if (ev.isNote) return [OPEN_MIDI[ev.string] + ev.fret + state.capo];
+    return ev.pcs.map((pc) => 48 + pc + state.capo); // chord → block voicing in octave 3
+  }
+
+  function playPitch(when, midi) {
+    const ctx = state.audioCtx;
+    const freq = 440 * Math.pow(2, (midi - 69) / 12);
+    const dur = 0.8;
+    const osc = ctx.createOscillator();
+    osc.type = "triangle";
+    osc.frequency.value = freq;
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = Math.min(5000, freq * 6);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, when);
+    g.gain.linearRampToValueAtTime(0.6, when + 0.006);          // pluck attack
+    g.gain.exponentialRampToValueAtTime(0.0008, when + dur);     // decay
+    osc.connect(lp); lp.connect(g); g.connect(state.audioMaster);
+    osc.start(when);
+    osc.stop(when + dur + 0.05);
+    state.audioSources.push({ osc, g });
+  }
+
+  function scheduleAudio(t) {
+    const ctx = state.audioCtx;
+    if (ctx.state === "suspended") ctx.resume();
+    const LOOKAHEAD = 0.12;
+    while (state.audioPtr < state.notes.length && state.notes[state.audioPtr].time <= t + LOOKAHEAD) {
+      const ev = state.notes[state.audioPtr];
+      const when = ctx.currentTime + Math.max(0, ev.time - t);
+      for (const midi of pitchesFor(ev)) playPitch(when, midi);
+      state.audioPtr++;
+    }
+    if (state.audioSources.length > 200) state.audioSources = state.audioSources.slice(-100);
   }
 
   // ---- Rendering ----
@@ -502,6 +588,7 @@
     if (state.playing) {
       const t = songTime();
       judge(t);
+      if (state.audioOn && state.audioCtx) scheduleAudio(t);
       if (t > state.songLength) { // song finished
         state.playing = false;
         els.play.textContent = "▶ Play";
@@ -553,6 +640,7 @@
   els.restart.addEventListener("click", resetPlayback);
   els.mic.addEventListener("click", toggleMic);
   els.mode.addEventListener("click", toggleMode);
+  els.audio.addEventListener("click", toggleAudio);
   els.songSelect.addEventListener("change", () => {
     loadSongByIndex(+els.songSelect.value);
     els.hint.classList.add("gone");
