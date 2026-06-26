@@ -9,18 +9,15 @@
     play: $("btnPlay"), restart: $("btnRestart"), mic: $("btnMic"),
     mode: $("btnMode"), audio: $("btnAudio"), songSelect: $("songSelect"),
     bpm: $("bpm"), bpmVal: $("bpmVal"),
-    bpc: $("bpc"), bpcVal: $("bpcVal"),
     accuracy: $("accuracy"), hitCount: $("hitCount"), playedCount: $("playedCount"), detected: $("detected"),
     hint: $("hint"), progress: $("progress"), progressFill: $("progressFill"),
     loopRegion: $("loopRegion"), loopA: $("loopA"), loopB: $("loopB"),
-    bpcWrap: $("bpcWrap"),
   };
 
   // ---- State ----
   const state = {
     notes: [],          // {time, name, pcs, root, lane, judged, hit}
     bpm: 90,
-    beatsPerChord: 2,
     capo: 0,            // capo fret — shifts matching pitch up by this many semitones
     mode: "chords",     // "chords" | "notes"
     song: null,         // raw song object currently loaded
@@ -101,16 +98,37 @@
   window.addEventListener("resize", resize);
 
   // ---- Build a CHORD timeline (uniform BPM × beats-per-chord) ----
+  // ---- Build a CHORD timeline as a STRUM pattern ----
+  // Each chord is strummed in rhythm using the song's up/down pattern (one token
+  // per eighth note in a bar). Falling blocks show ↓/↑ strokes; the panel shows
+  // the chord name + diagram. `chordBars` = how many bars each chord is held.
+  const DEFAULT_STRUM = ["D", "-", "D", "U", "-", "U", "D", "U"]; // ↓ ↓↑ ↑↓↑
   function buildChordTimeline(chords) {
-    const step = (60 / state.bpm) * state.beatsPerChord;
-    state.notes = chords.map((c, i) => ({
-      isNote: false,
-      label: c.name,
-      pcs: c.pcs,
-      time: LEAD_SECONDS + i * step,
-      lane: c.root % LANES,
-      judged: false, hit: false, flash: 0,
-    }));
+    const s = state.song || {};
+    const strum = (s.strum && s.strum.length) ? s.strum : DEFAULT_STRUM;
+    const beatsPerBar = s.beatsPerBar || 4;
+    const chordBars = s.chordBars || 1;
+    const secPerBar = (60 / state.bpm) * beatsPerBar;
+    const secPerSlot = secPerBar / strum.length;
+    const evs = [];
+    let t = LEAD_SECONDS;
+    for (const c of chords) {
+      for (let bar = 0; bar < chordBars; bar++) {
+        for (let i = 0; i < strum.length; i++) {
+          const tok = strum[i];
+          if (tok === "-" || tok === ".") continue;      // rest = no strum
+          const up = tok === "U" || tok === "u";
+          evs.push({
+            isNote: false, isStrum: true, name: c.name, label: up ? "↑" : "↓",
+            up, pcs: c.pcs, lane: c.root % LANES,
+            time: t + bar * secPerBar + i * secPerSlot,
+            judged: false, hit: false, flash: 0,
+          });
+        }
+      }
+      t += chordBars * secPerBar;
+    }
+    state.notes = evs;
     state.chords = [];
     finishTimeline();
   }
@@ -172,7 +190,6 @@
     state.song = s;
     state.title = s.title || "Untitled";
     if (s.bpm) { state.bpm = s.bpm; els.bpm.value = s.bpm; els.bpmVal.textContent = s.bpm; }
-    if (s.beatsPerChord) { state.beatsPerChord = s.beatsPerChord; els.bpc.value = s.beatsPerChord; els.bpcVal.textContent = s.beatsPerChord; }
     state.capo = s.capo || 0;
     // Default to Notes mode when the song has a note track; else Chords mode.
     state.mode = (s.notes && s.notes.length) ? "notes" : "chords";
@@ -474,11 +491,17 @@
       if (n.isNote) {
         const spacingPx = ((60 / state.bpm) / 2) * pxPerSec; // one eighth-note gap
         h = Math.min(w * 0.55, spacingPx * 0.86);
+      } else if (n.isStrum) {
+        // small ↓/↑ stroke marker, capped to the strum spacing so adjacent
+        // strokes stay distinct (chord name is shown on the right panel)
+        const slotPx = ((60 / state.bpm) * (state.song.beatsPerBar || 4) /
+          ((state.song.strum || []).length || 8)) * pxPerSec;
+        h = Math.min(30, slotPx * 0.7);
       } else {
         h = w * 0.45;   // chords-mode chord block
       }
       const radius = Math.min(w, h) * 0.26;
-      const fontSize = Math.round(Math.min(h * 0.55, w * 0.34));
+      const fontSize = n.isStrum ? 22 : Math.round(Math.min(h * 0.55, w * 0.34));
       const color = LANE_COLORS[n.lane % LANE_COLORS.length];
 
       ctx.save();
@@ -544,8 +567,11 @@
       if (visible(c.time)) items.push({ time: c.time, chord: c, active: Math.abs(t - c.time) <= HIT_WINDOW });
     }
     for (const n of state.notes) {
-      if ((n.isNote && n.inChord) || !visible(n.time)) continue;   // chord notes shown as the chord
-      items.push({ time: n.time, note: n, active: Math.abs(t - n.time) <= HIT_WINDOW });
+      if (!visible(n.time)) continue;
+      const active = Math.abs(t - n.time) <= HIT_WINDOW;
+      if (n.isStrum) items.push({ time: n.time, chord: { name: n.name }, active });   // chord-mode strums
+      else if (n.isNote && !n.inChord) items.push({ time: n.time, note: n, active }); // solo notes
+      // notes that are part of a chord are surfaced via state.chords
     }
     items.sort((a, b) => a.time - b.time);
 
@@ -732,8 +758,6 @@
     els.mode.style.display = hasNotes ? "" : "none";
     els.mode.textContent = state.mode === "notes" ? "♪ Notes" : "▦ Chords";
     els.mode.classList.toggle("active", state.mode === "notes");
-    // "Beats / chord" only affects Chords mode — hide it in Notes mode.
-    els.bpcWrap.style.display = state.mode === "notes" ? "none" : "";
   }
 
   function toggleMode() {
@@ -792,10 +816,6 @@
   });
   els.bpm.addEventListener("input", () => {
     state.bpm = +els.bpm.value; els.bpmVal.textContent = els.bpm.value;
-    if (state.song) { buildCurrentTimeline(); resetPlayback(); }
-  });
-  els.bpc.addEventListener("input", () => {
-    state.beatsPerChord = +els.bpc.value; els.bpcVal.textContent = els.bpc.value;
     if (state.song) { buildCurrentTimeline(); resetPlayback(); }
   });
 

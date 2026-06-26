@@ -13,7 +13,6 @@ window.SONGS = [
     title: "Hallelujah — Jeff Buckley",
     source: "https://tabs.ultimate-guitar.com/tab/jeff-buckley/hallelujah-guitar-pro-2155367",
     bpm: 102,          // ♩ = 102, 6/8 feel
-    beatsPerChord: 3,
     capo: 0,           // standard tuning E A D G B E, no capo
     // Full song, lossless from the Guitar Pro (.gpx) file via tools/parse-gp.mjs
     // — every note, string, fret and exact timing preserved.
@@ -200,8 +199,12 @@ F   Am   F   C   G   C`,
     title: "Dancing in the Dark — Bruce Springsteen",
     source: "https://tabs.ultimate-guitar.com/tab/bruce-springsteen/dancing-in-the-dark-chords-1087212",
     bpm: 148,
-    beatsPerChord: 4,
     capo: 4,           // Capo 4th fret (sounds in E); matching is transposed +4
+    // Strum pattern (one token per eighth note in a 4/4 bar): ↓ ↓↑ ↑↓↑
+    // D = downstroke, U = upstroke, - = no strum. Source: JustinGuitar lesson.
+    strum: ["D", "-", "D", "U", "-", "U", "D", "U"],
+    beatsPerBar: 4,
+    chordBars: 1,
     text: `Intro:
 G  Em  G  Em   (2x)
 
