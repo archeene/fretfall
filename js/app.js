@@ -13,6 +13,7 @@
     accuracy: $("accuracy"), hitCount: $("hitCount"), playedCount: $("playedCount"), detected: $("detected"),
     hint: $("hint"), progress: $("progress"), progressFill: $("progressFill"),
     loopRegion: $("loopRegion"), loopA: $("loopA"), loopB: $("loopB"),
+    bpcWrap: $("bpcWrap"),
   };
 
   // ---- State ----
@@ -731,6 +732,8 @@
     els.mode.style.display = hasNotes ? "" : "none";
     els.mode.textContent = state.mode === "notes" ? "♪ Notes" : "▦ Chords";
     els.mode.classList.toggle("active", state.mode === "notes");
+    // "Beats / chord" only affects Chords mode — hide it in Notes mode.
+    els.bpcWrap.style.display = state.mode === "notes" ? "none" : "";
   }
 
   function toggleMode() {
