@@ -36,6 +36,7 @@ const tuning = staff.stringTuning.tunings;        // high->low, e.g. [64,59,55,5
 const TPE = 480;                                   // ticks per eighth note (960/quarter)
 
 const notes = [];
+const chordMarks = [];
 let cumTicks = 0;
 staff.bars.forEach((bar, i) => {
   const mb = score.masterBars[i];
@@ -44,6 +45,11 @@ staff.bars.forEach((bar, i) => {
     for (const beat of v.beats) {
       if (beat.isRest) continue;
       const b = +(((cumTicks + beat.playbackStart) / TPE).toFixed(3));
+      // capture the transcriber's chord label (for broken-chord diagrams)
+      if (beat.chord && beat.chord.name &&
+          (!chordMarks.length || chordMarks[chordMarks.length - 1].name !== beat.chord.name)) {
+        chordMarks.push({ b, name: beat.chord.name });
+      }
       for (const n of beat.notes) {
         if (n.isDead || n.isTieDestination) continue;   // muted / tied = not re-picked
         const s = n.string - 1;                          // 0 = low E … 5 = high e (verified)
@@ -55,6 +61,8 @@ staff.bars.forEach((bar, i) => {
   cumTicks += barTicks;
 });
 notes.sort((a, b) => a.b - b.b || a.s - b.s);
+const ts0 = score.masterBars[0];
+const barEighths = Math.round(ts0.timeSignatureNumerator * (8 / ts0.timeSignatureDenominator));
 
 // ---- verification ----
 const OPEN = [40, 45, 50, 55, 59, 64];
@@ -64,19 +72,25 @@ console.log(`tempo: ${score.tempo} | capo: ${staff.capo} | bars: ${staff.bars.le
 console.log(`song length: ${(notes[notes.length - 1].b * (60 / score.tempo / 2)).toFixed(0)}s`);
 console.log(`bar 1 pitches: ${m1.join(" ")}`);
 
-// ---- emit notes literal ----
+console.log(`barEighths: ${barEighths} | chord labels: ${chordMarks.length}`);
+
+// ---- emit barEighths + chordMarks + notes literal ----
 const lit = notes.map((n) => `{ b: ${n.b}, s: ${n.s}, f: ${n.f} }`);
 const lines = [];
 for (let i = 0; i < lit.length; i += 8) lines.push("      " + lit.slice(i, i + 8).join(", ") + ",");
-const block = "notes: [\n" + lines.join("\n") + "\n    ],\n    ";
+const cmLit = chordMarks.map((c) => `{ b: ${c.b}, name: ${JSON.stringify(c.name)} }`).join(", ");
+const block =
+  `barEighths: ${barEighths},\n    ` +
+  (chordMarks.length ? `chordMarks: [${cmLit}],\n    ` : "") +
+  "notes: [\n" + lines.join("\n") + "\n    ],\n    ";
 
-// ---- splice into songs.js (replace the matching song's notes: [...] array) ----
+// ---- splice into songs.js (replace barEighths/chordMarks/notes for this song) ----
 let src = fs.readFileSync(SONGS_FILE, "utf8");
 const idIdx = src.indexOf(`id: "${songId}"`);
 if (idIdx < 0) { console.error(`Song id "${songId}" not found in songs.js`); process.exit(1); }
-// find the notes: [ ... ], that belongs to this song (before its text:)
+// find the existing barEighths?/chordMarks?/notes block belonging to this song
 const after = src.slice(idIdx);
-const re = /notes: \[[\s\S]*?\],\n(\s*)(?=text:|capo:|bpm:|id:|\})/;
+const re = /(?:barEighths:[^\n]*\n\s*)?(?:chordMarks: \[[\s\S]*?\],\n\s*)?notes: \[[\s\S]*?\],\n(\s*)(?=text:|capo:|bpm:|id:|\})/;
 if (!re.test(after)) {
   console.error("Could not locate this song's notes:[] array to replace. (Add a `notes: [],` placeholder before `text:`.)");
   process.exit(1);
