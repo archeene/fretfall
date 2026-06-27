@@ -816,7 +816,11 @@
       .forEach(({ s, i }) => {
         const opt = document.createElement("option");
         opt.value = i;
-        opt.textContent = s.title;
+        const hasNotes = Array.isArray(s.notes) && s.notes.length;
+        // note-by-note songs are highlighted; chord-only songs stay muted
+        opt.textContent = (hasNotes ? "♪ " : "") + s.title;
+        opt.style.color = hasNotes ? "#38ef7d" : "#8a96b8";
+        opt.style.fontWeight = hasNotes ? "700" : "400";
         els.songSelect.appendChild(opt);
       });
   }
