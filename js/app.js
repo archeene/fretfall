@@ -144,20 +144,13 @@
       groups.get(n.b).push(n);
     }
     const evs = [];
-    const chords = [];   // panel-only chord markers for 3+ simultaneous notes
     for (const [b, members] of groups) {
       const time = LEAD_SECONDS + b * eighth;
-      const inChord = members.length >= 3;
-      if (inChord) {
-        const midis = members.map((m) => OPEN_MIDI[m.s] + m.f).sort((a, c) => a - c);
-        const pcs = [...new Set(midis.map(midiToPc))];
-        chords.push({ time, name: recognizeChord(pcs, midiToPc(midis[0])), pcs });
-      }
-      // ALWAYS emit every note individually on the highway
+      // every note shown individually on the highway
       for (const m of members) {
         const midi = OPEN_MIDI[m.s] + m.f;
         evs.push({
-          isNote: true, inChord, label: String(m.f), pc: midiToPc(midi), pcs: [midiToPc(midi)],
+          isNote: true, label: String(m.f), pc: midiToPc(midi), pcs: [midiToPc(midi)],
           string: m.s, fret: m.f, noteName: midiToName(midi), midis: [midi],
           time, lane: m.s, judged: false, hit: false, flash: 0,
         });
@@ -165,8 +158,56 @@
     }
     evs.sort((a, c) => a.time - c.time || (a.lane || 0) - (c.lane || 0));
     state.notes = evs;
-    state.chords = chords;
+    state.chords = buildChordMarks(song, eighth);   // broken-chord diagrams
     finishTimeline();
+  }
+
+  // Chord markers (with start/end times) so a diagram shows while a broken chord
+  // (arpeggio) is on screen. Prefers the GPX's labelled chords; otherwise
+  // recognizes one chord per bar from the notes in it.
+  function buildChordMarks(song, eighth) {
+    const marks = [];
+    if (song.chordMarks && song.chordMarks.length) {
+      const cm = song.chordMarks;
+      const lastB = song.notes.length ? song.notes[song.notes.length - 1].b + 1 : 0;
+      for (let i = 0; i < cm.length; i++) {
+        const endB = i + 1 < cm.length ? cm[i + 1].b : lastB;
+        marks.push({
+          time: LEAD_SECONDS + cm[i].b * eighth,
+          endTime: LEAD_SECONDS + endB * eighth,
+          name: cm[i].name,
+          pcs: window.TabParser.chordToPitchClasses(cm[i].name),
+        });
+      }
+      return marks;
+    }
+    // fallback: recognize a chord per bar window from the notes present
+    const barE = song.barEighths || 6;
+    const byBar = new Map();
+    for (const n of song.notes) {
+      const bar = Math.floor(n.b / barE);
+      if (!byBar.has(bar)) byBar.set(bar, []);
+      byBar.get(bar).push(n);
+    }
+    for (const [bar, mem] of byBar) {
+      const midis = mem.map((m) => OPEN_MIDI[m.s] + m.f);
+      const pcs = [...new Set(midis.map(midiToPc))];
+      if (pcs.length < 3) continue;       // need ≥3 distinct tones to name a chord
+      marks.push({
+        time: LEAD_SECONDS + bar * barE * eighth,
+        endTime: LEAD_SECONDS + (bar + 1) * barE * eighth,
+        name: recognizeChord(pcs, midiToPc(Math.min(...midis))),
+        pcs,
+      });
+    }
+    // merge consecutive identical chords into one span
+    const merged = [];
+    for (const m of marks) {
+      const prev = merged[merged.length - 1];
+      if (prev && prev.name === m.name) prev.endTime = m.endTime;
+      else merged.push(m);
+    }
+    return merged;
   }
 
   function finishTimeline() {
@@ -558,15 +599,19 @@
       const y = hitY - (time - t) * pxPerSec;
       return y >= 30 && y <= hitY + 22;
     };
+    const winStart = t - 0.25, winEnd = t + LEAD_SECONDS;   // on-screen time window
 
-    // Visible items: chord markers (3+ notes) become diagram cards; standalone
-    // notes (not part of a chord) become note cards. Both deduped, soonest first.
+    // Chord diagrams only. Ranged markers (broken chords) show while their span
+    // overlaps the screen; strum events (chords mode) are point markers.
     const items = [];
     for (const c of (state.chords || [])) {
-      if (visible(c.time)) items.push({ time: c.time, chord: c, active: Math.abs(t - c.time) <= HIT_WINDOW });
+      const end = c.endTime != null ? c.endTime : c.time;
+      if (end > winStart && c.time < winEnd) {
+        items.push({ time: c.time, chord: c, active: t >= c.time - HIT_WINDOW && t <= end + 0.05 });
+      }
     }
     for (const n of state.notes) {
-      if (!visible(n.time) || !n.isStrum) continue;   // only chords on the panel
+      if (!visible(n.time) || !n.isStrum) continue;   // chords-mode strums
       items.push({ time: n.time, chord: { name: n.name }, active: Math.abs(t - n.time) <= HIT_WINDOW });
     }
     items.sort((a, b) => a.time - b.time);
