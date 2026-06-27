@@ -217,6 +217,7 @@
   }
 
   function buildCurrentTimeline() {
+    state.panelSlots = null;   // reset fixed chord-diagram slots
     const s = state.song;
     if (state.mode === "notes" && s.notes && s.notes.length) {
       buildNoteTimeline(s);
@@ -595,42 +596,43 @@
     ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
     ctx.fillText("ON SCREEN", px + 16, 28);
 
-    const visible = (time) => {
-      const y = hitY - (time - t) * pxPerSec;
-      return y >= 30 && y <= hitY + 22;
-    };
     const winStart = t - 0.25, winEnd = t + LEAD_SECONDS;   // on-screen time window
 
-    // Chord diagrams only. Ranged markers (broken chords) show while their span
-    // overlaps the screen; strum events (chords mode) are point markers.
-    const items = [];
+    // Collect chords currently present anywhere on screen (deduped by name).
+    const present = new Map();   // name -> {active, time}
+    const note = (name, time, active) => {
+      const cur = present.get(name);
+      if (cur) { cur.active = cur.active || active; cur.time = Math.min(cur.time, time); }
+      else present.set(name, { active, time });
+    };
     for (const c of (state.chords || [])) {
       const end = c.endTime != null ? c.endTime : c.time;
-      if (end > winStart && c.time < winEnd) {
-        items.push({ time: c.time, chord: c, active: t >= c.time - HIT_WINDOW && t <= end + 0.05 });
-      }
+      if (end > winStart && c.time < winEnd) note(c.name, c.time, t >= c.time - HIT_WINDOW && t <= end + 0.05);
     }
     for (const n of state.notes) {
-      if (!visible(n.time) || !n.isStrum) continue;   // chords-mode strums
-      items.push({ time: n.time, chord: { name: n.name }, active: Math.abs(t - n.time) <= HIT_WINDOW });
-    }
-    items.sort((a, b) => a.time - b.time);
-
-    const byKey = new Map();
-    for (const it of items) {
-      const key = it.chord ? `c:${it.chord.name}` : `n:${it.note.string}:${it.note.fret}`;
-      if (byKey.has(key)) byKey.get(key).active = byKey.get(key).active || it.active;
-      else byKey.set(key, it);
+      if (!n.isStrum) continue;
+      const y = hitY - (n.time - t) * pxPerSec;
+      if (y >= 30 && y <= hitY + 22) note(n.name, n.time, Math.abs(t - n.time) <= HIT_WINDOW);
     }
 
-    // Stack from the bottom (soonest nearest the hit line).
-    let y = H - 16;
-    for (const it of byKey.values()) {
-      const slotH = it.chord ? 166 : 86;
-      y -= slotH;
-      if (y < 40) break;
-      if (it.chord) drawChordDiagram(px + 20, y, panelW - 40, slotH - 30, it.chord.name, it.active);
-      else drawNoteCard(px + 20, y, panelW - 40, slotH - 14, it.note, it.active);
+    // FIXED slots: a chord keeps its slot the whole time it's on screen, so the
+    // diagrams stay put (don't reflow) instead of sliding around.
+    const topY = 42, bottom = 16, slotH = 162;
+    const maxSlots = Math.max(1, Math.floor((H - topY - bottom) / slotH));
+    if (!state.panelSlots || state.panelSlots.length !== maxSlots) {
+      state.panelSlots = new Array(maxSlots).fill(null);
+    }
+    const slots = state.panelSlots;
+    for (let i = 0; i < maxSlots; i++) if (slots[i] && !present.has(slots[i])) slots[i] = null;  // free departed
+    const held = new Set(slots.filter(Boolean));
+    const newcomers = [...present.keys()].filter((n) => !held.has(n))
+      .sort((a, b) => present.get(a).time - present.get(b).time);
+    for (const name of newcomers) { const f = slots.indexOf(null); if (f < 0) break; slots[f] = name; }
+
+    for (let i = 0; i < maxSlots; i++) {
+      const name = slots[i];
+      if (!name) continue;
+      drawChordDiagram(px + 20, topY + i * slotH, panelW - 40, slotH - 30, name, present.get(name).active);
     }
   }
 
