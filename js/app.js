@@ -12,6 +12,7 @@
     accuracy: $("accuracy"), hitCount: $("hitCount"), playedCount: $("playedCount"), detected: $("detected"),
     hint: $("hint"), progress: $("progress"), progressFill: $("progressFill"),
     loopRegion: $("loopRegion"), loopA: $("loopA"), loopB: $("loopB"),
+    capoBadge: $("capoBadge"),
   };
 
   // ---- State ----
@@ -46,7 +47,7 @@
 
   // ---- Layout constants ----
   const LEAD_SECONDS = 3;       // how far ahead a note is visible above hit line
-  const HIT_WINDOW = 0.28;      // +/- seconds counted as a hit
+  const HIT_WINDOW = 0.45;      // +/- seconds counted as a hit (timing tolerance)
   const LANES = 6;
   const LANE_COLORS = ["#29e0c8", "#ff4d8d", "#ffd166", "#7c5cff", "#38ef7d", "#ff8e3c"];
 
@@ -232,6 +233,8 @@
     state.title = s.title || "Untitled";
     if (s.bpm) { state.bpm = s.bpm; els.bpm.value = s.bpm; els.bpmVal.textContent = s.bpm; }
     state.capo = s.capo || 0;
+    els.capoBadge.textContent = `Capo ${state.capo}`;
+    els.capoBadge.style.display = state.capo ? "" : "none";
     // Default to Notes mode when the song has a note track; else Chords mode.
     state.mode = (s.notes && s.notes.length) ? "notes" : "chords";
     state.loopA = 0; state.loopB = 1;   // new song → full-range loop
@@ -346,8 +349,12 @@
   }
 
   // ---- Microphone ----
-  async function toggleMic() {
-    if (state.micOn) return;
+  // Idempotent. `manual` = the user clicked the button (show errors); auto-enable
+  // calls stay quiet. Browsers require a user gesture, so this fires on the first
+  // interaction (see the autoMic listener in the boot section).
+  async function enableMic(manual) {
+    if (state.micOn || state.micStarting) return;
+    state.micStarting = true;
     try {
       state.detector = new window.PitchDetector();
       await state.detector.start();
@@ -355,8 +362,12 @@
       els.mic.textContent = "🎤 Mic On";
       els.mic.classList.add("active");
     } catch (e) {
-      alert("Could not access microphone: " + e.message +
-        "\n\nTip: run via the bundled launcher (http://localhost) so the browser allows mic access.");
+      if (manual) {
+        alert("Could not access microphone: " + e.message +
+          "\n\nTip: run via the bundled launcher (http://localhost) so the browser allows mic access.");
+      }
+    } finally {
+      state.micStarting = false;
     }
   }
 
@@ -813,8 +824,19 @@
 
   // ---- Wire up UI ----
   els.play.addEventListener("click", togglePlay);
-  els.restart.addEventListener("click", resetPlayback);
-  els.mic.addEventListener("click", toggleMic);
+  els.restart.addEventListener("click", () => {
+    resetPlayback();
+    if (!state.playing) togglePlay();   // restart and immediately play
+  });
+  els.mic.addEventListener("click", () => enableMic(true));
+  // Auto-enable the mic on the first user interaction (browsers require a gesture).
+  const autoMic = () => {
+    enableMic(false);
+    window.removeEventListener("pointerdown", autoMic);
+    window.removeEventListener("keydown", autoMic);
+  };
+  window.addEventListener("pointerdown", autoMic);
+  window.addEventListener("keydown", autoMic);
   els.mode.addEventListener("click", toggleMode);
   els.audio.addEventListener("click", toggleAudio);
 

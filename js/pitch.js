@@ -45,7 +45,7 @@
     // scores ~0.85+; broadband noise scores ~0.05-0.2. A struck chord is less
     // periodic (~0.5-0.7), so 0.6 lets single notes AND chords register while
     // still rejecting broadband noise.
-    clarityGate = 0.6;
+    clarityGate = 0.5;
 
     // Returns { freq, rms, clarity } — freq is -1 when no clear pitch / too quiet.
     detect() {
