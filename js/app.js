@@ -158,6 +158,15 @@
       }
     }
     evs.sort((a, c) => a.time - c.time || (a.lane || 0) - (c.lane || 0));
+    // record each note's time gap to the next note in the SAME lane, so the
+    // renderer can shrink tiles enough that they never overlap (keeps fret
+    // numbers readable in dense passages).
+    const lastInLane = {};
+    for (const ev of evs) {
+      const prev = lastInLane[ev.lane];
+      if (prev) prev.gapToNext = ev.time - prev.time;
+      lastInLane[ev.lane] = ev;
+    }
     state.notes = evs;
     state.chords = buildChordMarks(song, eighth);   // broken-chord diagrams
     finishTimeline();
@@ -541,8 +550,11 @@
       const w = laneW - 16;
       let h;
       if (n.isNote) {
-        const spacingPx = ((60 / state.bpm) / 2) * pxPerSec; // one eighth-note gap
-        h = Math.min(w * 0.55, spacingPx * 0.86);
+        const eighthPx = ((60 / state.bpm) / 2) * pxPerSec;          // default one-eighth gap
+        const gapPx = n.gapToNext ? n.gapToNext * pxPerSec : eighthPx;
+        // never let a tile grow taller than the gap to the next note in its lane,
+        // so consecutive fret numbers stay separated and readable
+        h = Math.min(w * 0.55, Math.max(gapPx * 0.82, 7));
       } else if (n.isStrum) {
         // small ↓/↑ stroke marker, capped to the strum spacing so adjacent
         // strokes stay distinct (chord name is shown on the right panel)
@@ -553,7 +565,7 @@
         h = w * 0.45;   // chords-mode chord block
       }
       const radius = Math.min(w, h) * 0.26;
-      const fontSize = n.isStrum ? 22 : Math.round(Math.min(h * 0.55, w * 0.34));
+      const fontSize = n.isStrum ? 22 : Math.max(9, Math.round(Math.min(h * 0.6, w * 0.34)));
       const color = LANE_COLORS[n.lane % LANE_COLORS.length];
 
       ctx.save();
@@ -573,6 +585,10 @@
       ctx.font = `${n.isNote ? 800 : 700} ${fontSize}px Segoe UI, sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
+      // light halo so the digit reads even when tiles are tightly packed
+      ctx.lineWidth = Math.max(2, fontSize * 0.18);
+      ctx.strokeStyle = n.judged ? "rgba(0,0,0,0.35)" : "rgba(255,255,255,0.55)";
+      ctx.strokeText(n.label, cx, y);
       ctx.fillStyle = n.judged ? (n.hit ? "#caffd9" : "#ffd0d6") : "#04121a";
       ctx.fillText(n.label, cx, y);
 
@@ -793,12 +809,16 @@
   // ---- Song library ----
   function populateSongs() {
     els.songSelect.innerHTML = "";
-    window.SONGS.forEach((s, i) => {
-      const opt = document.createElement("option");
-      opt.value = i;
-      opt.textContent = s.title;
-      els.songSelect.appendChild(opt);
-    });
+    // show alphabetically by title, but keep each option's value = original index
+    window.SONGS
+      .map((s, i) => ({ s, i }))
+      .sort((a, b) => a.s.title.localeCompare(b.s.title, undefined, { sensitivity: "base" }))
+      .forEach(({ s, i }) => {
+        const opt = document.createElement("option");
+        opt.value = i;
+        opt.textContent = s.title;
+        els.songSelect.appendChild(opt);
+      });
   }
   function loadSongByIndex(i) {
     const s = window.SONGS[i];
