@@ -164,7 +164,7 @@
     const lastInLane = {};
     for (const ev of evs) {
       const prev = lastInLane[ev.lane];
-      if (prev) prev.gapToNext = ev.time - prev.time;
+      if (prev) { const g = ev.time - prev.time; prev.gapToNext = g; ev.gapToPrev = g; }
       lastInLane[ev.lane] = ev;
     }
     state.notes = evs;
@@ -548,24 +548,28 @@
       // right panel, not collapsed on the highway.
       const cx = n.lane * laneW + laneW / 2;
       const w = laneW - 16;
-      let h;
+      // geometry per type: notes are SUSTAIN BARS anchored at the onset (bottom = y)
+      // extending up toward the next note on the same string, so a held note shows
+      // as a long bar, rapid notes as short bars, and bars never overlap (they tile
+      // the lane's timeline). Strum/chord markers stay centred as before.
+      let top, barH, labelY, fontSize;
       if (n.isNote) {
-        const eighthPx = ((60 / state.bpm) / 2) * pxPerSec;          // default one-eighth gap
-        const gapPx = n.gapToNext ? n.gapToNext * pxPerSec : eighthPx;
-        // never let a tile grow taller than the gap to the next note in its lane,
-        // so consecutive fret numbers stay separated and readable
-        h = Math.min(w * 0.55, Math.max(gapPx * 0.82, 7));
+        const eighthPx = ((60 / state.bpm) / 2) * pxPerSec;
+        const sustainPx = (n.gapToNext ? n.gapToNext * pxPerSec : eighthPx * 1.5);
+        barH = Math.max(11, Math.min(sustainPx * 0.9, H));     // [onset .. next same-string note]
+        top = y - barH;                                        // onset at bottom, tail extends up
+        fontSize = Math.max(9, Math.round(Math.min(26, w * 0.34)));
+        labelY = y - Math.min(barH * 0.5, fontSize * 0.75);    // number near the onset (hit) end
       } else if (n.isStrum) {
-        // small ↓/↑ stroke marker, capped to the strum spacing so adjacent
-        // strokes stay distinct (chord name is shown on the right panel)
         const slotPx = ((60 / state.bpm) * (state.song.beatsPerBar || 4) /
           ((state.song.strum || []).length || 8)) * pxPerSec;
-        h = Math.min(30, slotPx * 0.7);
+        barH = Math.min(30, slotPx * 0.7); top = y - barH / 2; labelY = y;
+        fontSize = 22;
       } else {
-        h = w * 0.45;   // chords-mode chord block
+        barH = w * 0.45; top = y - barH / 2; labelY = y;       // chords-mode chord block
+        fontSize = Math.max(9, Math.round(Math.min(barH * 0.6, w * 0.34)));
       }
-      const radius = Math.min(w, h) * 0.26;
-      const fontSize = n.isStrum ? 22 : Math.max(9, Math.round(Math.min(h * 0.6, w * 0.34)));
+      const radius = Math.min(w, barH) * 0.26;
       const color = LANE_COLORS[n.lane % LANE_COLORS.length];
 
       ctx.save();
@@ -577,7 +581,7 @@
       ctx.shadowColor = n.judged ? (n.hit ? "#38ef7d" : "#ff5b6e") : color;
       ctx.shadowBlur = n.flash > 0 ? 30 : 14;
       ctx.fillStyle = n.judged ? (n.hit ? "#1c6b3a" : "#5e2230") : color;
-      roundRect(cx - w / 2, y - h / 2, w, h, radius);
+      roundRect(cx - w / 2, top, w, barH, radius);
       ctx.fill();
       ctx.restore();
 
@@ -588,9 +592,9 @@
       // light halo so the digit reads even when tiles are tightly packed
       ctx.lineWidth = Math.max(2, fontSize * 0.18);
       ctx.strokeStyle = n.judged ? "rgba(0,0,0,0.35)" : "rgba(255,255,255,0.55)";
-      ctx.strokeText(n.label, cx, y);
+      ctx.strokeText(n.label, cx, labelY);
       ctx.fillStyle = n.judged ? (n.hit ? "#caffd9" : "#ffd0d6") : "#04121a";
-      ctx.fillText(n.label, cx, y);
+      ctx.fillText(n.label, cx, labelY);
 
       if (n.flash > 0) n.flash = Math.max(0, n.flash - 0.04);
     }
