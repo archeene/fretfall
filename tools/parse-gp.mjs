@@ -53,7 +53,7 @@ staff.bars.forEach((bar, i) => {
       for (const n of beat.notes) {
         if (n.isDead || n.isTieDestination) continue;   // muted / tied = not re-picked
         const s = n.string - 1;                          // 0 = low E … 5 = high e (verified)
-        if (s < 0 || s > 5) continue;
+        if (s < 0 || s > 5 || n.fret < 0 || n.fret > 24) continue;
         notes.push({ b, s, f: n.fret });
       }
     }

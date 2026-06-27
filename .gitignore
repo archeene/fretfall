@@ -1,3 +1,6 @@
 node_modules/
 tools/staging/
 .DS_Store
+tools/gp/
+tools/node_modules/
+tools/*.gp4
