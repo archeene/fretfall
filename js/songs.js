@@ -310,4 +310,69 @@ Even if we're just dancing in the dark   (2x)
 G
 Hey baby`,
   },
+
+  {
+    id: "what-a-good-boy",
+    title: "What a Good Boy — Barenaked Ladies",
+    source: "https://tabs.ultimate-guitar.com/tab/barenaked-ladies/what-a-good-boy-chords-1234567",
+    bpm: 97,
+    capo: 0,           // chords as played without capo (G D Cadd9 Em G/F# C)
+    // Strum pattern from the tab's "MAIN PATTERN" (all downstrokes): 1 2 & 4 &
+    strum: ["D", "-", "D", "D", "-", "-", "D", "D"],
+    beatsPerBar: 4,
+    chordBars: 1,
+    text: `Verse 1:
+G              D            Cadd9
+When I was born, they looked at me and said
+Cadd9
+what a good boy, what a smart boy, what a strong boy
+G              D            Cadd9
+And when you were born, they looked at you and said
+Cadd9
+what a good girl, what a smart girl, what a pretty girl
+
+Pre-chorus:
+G              D
+We've got these chains that hang around our necks
+Cadd9
+people want to strangle us with them before we take our first breath
+G              D            Cadd9
+Afraid of change, afraid of staying the same
+Cadd9
+when temptation calls, we just look away
+
+Chorus:
+G                    D
+This name is the hairshirt I wear
+Cadd9                              D
+and this hairshirt is woven from your brown hair
+G                    D
+This song is the cross that I bear
+Cadd9
+bear it with me, bear with me, bear with me
+D
+be with me tonight
+G    G/F#   Em   C
+I know that it isn't right
+G    G/F#   Em   C
+but be with me tonight
+
+Verse 2:
+G              D            Cadd9
+I go to school, I write exams
+Cadd9
+if I pass, if I fail, if I drop out, does anyone give a damn
+G              D            Cadd9
+And if they do, they'll soon forget
+Cadd9
+'cause it won't take much for me to show my life ain't over yet
+G                    Em
+I wake up scared, I wake up strange
+Cadd9
+I wake up wondering if anything in my life is ever going to change
+G                    Em
+I wake up scared, I wake up strange
+Cadd9
+and everything around me stays the same`,
+  },
 ];
