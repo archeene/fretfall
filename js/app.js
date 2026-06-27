@@ -566,11 +566,8 @@
       if (visible(c.time)) items.push({ time: c.time, chord: c, active: Math.abs(t - c.time) <= HIT_WINDOW });
     }
     for (const n of state.notes) {
-      if (!visible(n.time)) continue;
-      const active = Math.abs(t - n.time) <= HIT_WINDOW;
-      if (n.isStrum) items.push({ time: n.time, chord: { name: n.name }, active });   // chord-mode strums
-      else if (n.isNote && !n.inChord) items.push({ time: n.time, note: n, active }); // solo notes
-      // notes that are part of a chord are surfaced via state.chords
+      if (!visible(n.time) || !n.isStrum) continue;   // only chords on the panel
+      items.push({ time: n.time, chord: { name: n.name }, active: Math.abs(t - n.time) <= HIT_WINDOW });
     }
     items.sort((a, b) => a.time - b.time);
 
