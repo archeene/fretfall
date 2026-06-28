@@ -11,7 +11,7 @@ import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, "..");
-const SCR = "/tmp/claude-1000/-home-archeene-Boss/85d984b5-2c3b-4998-88a9-73c8c348f885/scratchpad";
+const SCR = "/home/archeene/.fretfall";          // persistent toolchain (survives WSL restarts)
 const BIN = `${SCR}/bin`, AUD = `${SCR}/audio`;
 const PY_D = `${SCR}/venv-demucs/bin/python`, PY_L = `${SCR}/venv-lib/bin/python`;
 const ENV = { ...process.env, OMP_NUM_THREADS: "16", MKL_NUM_THREADS: "16", PATH: `${BIN}:${process.env.PATH}` };
