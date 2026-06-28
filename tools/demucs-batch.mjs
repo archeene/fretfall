@@ -36,8 +36,8 @@ for (const s of songs) {
     execSync(`"${BIN}/yt-dlp" --ffmpeg-location "${BIN}" -x --audio-format wav --no-playlist --no-warnings -o "${AUD}/${id}.%(ext)s" "ytsearch1:${artist} ${title} official audio"`, { stdio: "ignore", timeout: 200000 });
     if (!fs.existsSync(wav)) throw new Error("no audio");
     fs.rmSync(sep, { recursive: true, force: true });
-    // memory-frugal: small segment (low activation RAM) + single worker (one model in RAM)
-    execSync(`nice -n 10 "${PY_D}" -m demucs -n htdemucs -j 1 --two-stems=vocals --mp3 --segment 3 -o "${sep}" "${wav}"`, { stdio: "ignore", timeout: 900000, env: ENV });
+    // 11GB cap (post-restart) gives ample RAM: segment 7 + 16 threads = fast & reliable
+    execSync(`nice -n 5 "${PY_D}" -m demucs -n htdemucs -j 1 --two-stems=vocals --mp3 --segment 7 -o "${sep}" "${wav}"`, { stdio: "ignore", timeout: 900000, env: ENV });
     const mp3 = execSync(`find "${sep}" -name no_vocals.mp3`).toString().trim().split("\n")[0];
     if (!mp3) throw new Error("no stem");
     const stem = `${sep}/no_vocals.wav`;
@@ -50,3 +50,16 @@ for (const s of songs) {
   } catch (e) { clean(); fail++; console.log(`✗ ${s.title} — ${String(e.message).split("\n")[0].slice(0, 55)}`); }
 }
 console.log(`\nDONE: ${ok} ok, ${fail} failed`);
+
+// auto-deploy when run unattended (e.g. after a WSL restart for the 11GB cap)
+if (ok > 0) {
+  try {
+    const v = Date.now();
+    execSync(`sed -i 's/?v=[0-9]*/?v=${v}/g' "${ROOT}/index.html"`);
+    execSync(`node -c "${ROOT}/js/songs.js"`);                       // refuse to deploy a broken file
+    execSync(`git -C "${ROOT}" add js/songs.js index.html`);
+    execSync(`git -C "${ROOT}" commit -q -m "Vienna Teng: Demucs stem-isolated picked tracks (auto-deployed)"`);
+    execSync(`git -C "${ROOT}" push -q ghpages master`);
+    console.log("DEPLOYED");
+  } catch (e) { console.log("deploy skipped:", String(e.message).split("\n")[0].slice(0, 80)); }
+}
