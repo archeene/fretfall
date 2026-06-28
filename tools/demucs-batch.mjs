@@ -55,11 +55,13 @@ console.log(`\nDONE: ${ok} ok, ${fail} failed`);
 if (ok > 0) {
   try {
     const v = Date.now();
+    const gitEnv = { ...process.env };                              // clean git env (.bashrc sets GIT_WORK_TREE)
+    delete gitEnv.GIT_WORK_TREE; delete gitEnv.GIT_DIR;
     execSync(`sed -i 's/?v=[0-9]*/?v=${v}/g' "${ROOT}/index.html"`);
     execSync(`node -c "${ROOT}/js/songs.js"`);                       // refuse to deploy a broken file
-    execSync(`git -C "${ROOT}" add js/songs.js index.html`);
-    execSync(`git -C "${ROOT}" commit -q -m "Vienna Teng: Demucs stem-isolated picked tracks (auto-deployed)"`);
-    execSync(`git -C "${ROOT}" push -q ghpages master`);
+    execSync(`git -C "${ROOT}" add js/songs.js index.html`, { env: gitEnv });
+    execSync(`git -C "${ROOT}" commit -q -m "Vienna Teng: Demucs stem-isolated picked tracks (auto-deployed)"`, { env: gitEnv });
+    execSync(`git -C "${ROOT}" push -q ghpages master`, { env: gitEnv });
     console.log("DEPLOYED");
   } catch (e) { console.log("deploy skipped:", String(e.message).split("\n")[0].slice(0, 80)); }
 }
