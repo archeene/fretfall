@@ -548,18 +548,15 @@
       // right panel, not collapsed on the highway.
       const cx = n.lane * laneW + laneW / 2;
       const w = laneW - 16;
-      // geometry per type: notes are SUSTAIN BARS anchored at the onset (bottom = y)
-      // extending up toward the next note on the same string, so a held note shows
-      // as a long bar, rapid notes as short bars, and bars never overlap (they tile
-      // the lane's timeline). Strum/chord markers stay centred as before.
+      // geometry per type: every note is the SAME fixed-size tile, centred on its
+      // onset. Timing is conveyed by the SPACING between tiles — a longer note leaves
+      // a bigger gap before the next one — not by tile size. Strum/chord stay as before.
       let top, barH, labelY, fontSize;
       if (n.isNote) {
-        const eighthPx = ((60 / state.bpm) / 2) * pxPerSec;
-        const sustainPx = (n.gapToNext ? n.gapToNext * pxPerSec : eighthPx * 1.5);
-        barH = Math.max(11, Math.min(sustainPx * 0.9, H));     // [onset .. next same-string note]
-        top = y - barH;                                        // onset at bottom, tail extends up
-        fontSize = Math.max(9, Math.round(Math.min(26, w * 0.34)));
-        labelY = y - Math.min(barH * 0.5, fontSize * 0.75);    // number near the onset (hit) end
+        barH = Math.min(w * 0.44, 40);                         // uniform note size
+        top = y - barH / 2;
+        labelY = y;
+        fontSize = Math.max(11, Math.round(Math.min(barH * 0.62, w * 0.34)));
       } else if (n.isStrum) {
         const slotPx = ((60 / state.bpm) * (state.song.beatsPerBar || 4) /
           ((state.song.strum || []).length || 8)) * pxPerSec;
