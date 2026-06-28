@@ -57,35 +57,24 @@ chords.forEach((c, ci) => {
   }
 });
 notes.sort((a, b) => a.b - b.b || a.s - b.s);
+if (notes.length < 16) { console.error(`too few notes (${notes.length}) — chords likely unrecognized; skipping`); process.exit(2); }
 
-// build a note-song entry
-const tempo = Math.round(pat.tempo) || song.bpm || 100;
-const title = song.title.replace(/ — /, " (picked) — ");
+// attach a `picked: [...]` track to the EXISTING chord-song entry (toggle in-app)
 const lit = notes.map((n) => `{ b: ${n.b}, s: ${n.s}, f: ${n.f} }`);
 const lines = [];
 for (let i = 0; i < lit.length; i += 8) lines.push("      " + lit.slice(i, i + 8).join(", ") + ",");
-const entry = `  {
-    id: ${JSON.stringify(newId)},
-    title: ${JSON.stringify(title)},
-    source: ${JSON.stringify(song.source)},
-    bpm: ${tempo},
-    capo: ${song.capo || 0},
-    barEighths: 8,
-    // Generated: audio-learned breakup pattern (tools/audio-pattern.py) stamped onto the
-    // known chords + shapes. Pattern, not exact transcription. Source chords: ${songId}.
-    notes: [
-${lines.join("\n")}
-    ],
-  },`;
+const pickedBlock = `picked: [\n${lines.join("\n")}\n    ],\n    `;
 
-let src = fs.readFileSync(path.join(ROOT, "js/songs.js"), "utf8");
-if (src.includes(`id: ${JSON.stringify(newId)}`)) {        // replace existing generated entry
-  const re = new RegExp(`\\n  \\{\\n    id: ${JSON.stringify(newId)}[\\s\\S]*?\\n  \\},`);
-  src = src.replace(re, "\n" + entry);
-} else {
-  const close = src.lastIndexOf("];");
-  src = src.slice(0, close) + entry + "\n" + src.slice(close);
-}
-fs.writeFileSync(path.join(ROOT, "js/songs.js"), src);
-console.log(`${newId}: ${notes.length} notes over ${chords.length} chords (bpm ${tempo}), template slots ${pat.template.length}`);
-console.log("first bar:", JSON.stringify(notes.filter((n) => n.b < 8)));
+const SONGS_FILE = path.join(ROOT, "js/songs.js");
+let src = fs.readFileSync(SONGS_FILE, "utf8");
+const idIdx = src.indexOf(`id: ${JSON.stringify(songId)}`);
+if (idIdx < 0) { console.error("song entry not found:", songId); process.exit(1); }
+const entryStart = src.lastIndexOf("{", idIdx);
+const closeIdx = src.indexOf("\n  },", idIdx);          // entry closes with "\n  },"
+let entry = src.slice(entryStart, closeIdx);
+if (/picked: \[/.test(entry)) entry = entry.replace(/picked: \[[\s\S]*?\],\n\s*/, pickedBlock);
+else if (/\n\s*text:/.test(entry)) entry = entry.replace(/(\n\s*)text:/, `$1${pickedBlock}text:`);
+else entry = entry.replace(/\n\s*$/, `\n    ${pickedBlock.trimEnd()}\n`);
+src = src.slice(0, entryStart) + entry + src.slice(closeIdx);
+fs.writeFileSync(SONGS_FILE, src);
+console.log(`${songId}: attached picked track — ${notes.length} notes over ${chords.length} chords (${pat.template.length} slots)`);

@@ -140,7 +140,8 @@
     const eighth = (60 / state.bpm) / 2;   // 6/8 feel: count in eighth notes
     // group source notes by their beat position (simultaneous notes share `b`)
     const groups = new Map();
-    for (const n of song.notes) {
+    const srcNotes = (song.notes && song.notes.length) ? song.notes : (song.picked || []);
+    for (const n of srcNotes) {
       if (!groups.has(n.b)) groups.set(n.b, []);
       groups.get(n.b).push(n);
     }
@@ -177,9 +178,10 @@
   // recognizes one chord per bar from the notes in it.
   function buildChordMarks(song, eighth) {
     const marks = [];
+    const sn = (song.notes && song.notes.length) ? song.notes : (song.picked || []);
     if (song.chordMarks && song.chordMarks.length) {
       const cm = song.chordMarks;
-      const lastB = song.notes.length ? song.notes[song.notes.length - 1].b + 1 : 0;
+      const lastB = sn.length ? sn[sn.length - 1].b + 1 : 0;
       for (let i = 0; i < cm.length; i++) {
         const endB = i + 1 < cm.length ? cm[i + 1].b : lastB;
         marks.push({
@@ -194,7 +196,7 @@
     // fallback: recognize a chord per bar window from the notes present
     const barE = song.barEighths || 6;
     const byBar = new Map();
-    for (const n of song.notes) {
+    for (const n of sn) {
       const bar = Math.floor(n.b / barE);
       if (!byBar.has(bar)) byBar.set(bar, []);
       byBar.get(bar).push(n);
@@ -229,7 +231,8 @@
   function buildCurrentTimeline() {
     state.panelSlots = null;   // reset fixed chord-diagram slots
     const s = state.song;
-    if (state.mode === "notes" && s.notes && s.notes.length) {
+    const hasNoteTrack = (s.notes && s.notes.length) || (s.picked && s.picked.length);
+    if (state.mode === "notes" && hasNoteTrack) {
       buildNoteTimeline(s);
     } else {
       const parsed = window.TabParser.parseTab(s.text);
@@ -828,8 +831,8 @@
       .forEach(({ s, i }) => {
         const opt = document.createElement("option");
         opt.value = i;
-        const hasNotes = Array.isArray(s.notes) && s.notes.length;
-        // note-by-note songs are highlighted; chord-only songs stay muted
+        const hasNotes = (Array.isArray(s.notes) && s.notes.length) || (Array.isArray(s.picked) && s.picked.length);
+        // songs with a note/picked track are highlighted; chord-only songs stay muted
         opt.textContent = (hasNotes ? "♪ " : "") + s.title;
         opt.style.color = hasNotes ? "#38ef7d" : "#8a96b8";
         opt.style.fontWeight = hasNotes ? "700" : "400";
@@ -842,16 +845,23 @@
     loadSongObject(s);
   }
 
-  // Show/enable the Notes/Chords toggle only when the song has a note track.
+  // Show the toggle only when the song has BOTH a note track and a chord chart,
+  // so you can switch between them. A `picked` track (generated arpeggio) counts.
   function updateModeButton() {
-    const hasNotes = !!(state.song && state.song.notes && state.song.notes.length);
-    els.mode.style.display = hasNotes ? "" : "none";
-    els.mode.textContent = state.mode === "notes" ? "♪ Notes" : "▦ Chords";
+    const s = state.song || {};
+    const hasNoteTrack = (s.notes && s.notes.length) || (s.picked && s.picked.length);
+    const canToggle = !!(hasNoteTrack && s.text);
+    els.mode.style.display = canToggle ? "" : "none";
+    // when the note track is the generated arpeggio (no real notes), call it "Picked"
+    const noteLabel = (!(s.notes && s.notes.length) && s.picked) ? "♪ Picked" : "♪ Notes";
+    els.mode.textContent = state.mode === "notes" ? noteLabel : "▦ Chords";
     els.mode.classList.toggle("active", state.mode === "notes");
   }
 
   function toggleMode() {
-    if (!(state.song && state.song.notes && state.song.notes.length)) return;
+    const s = state.song || {};
+    const hasNoteTrack = (s.notes && s.notes.length) || (s.picked && s.picked.length);
+    if (!(hasNoteTrack && s.text)) return;
     state.mode = state.mode === "notes" ? "chords" : "notes";
     buildCurrentTimeline();
     updateModeButton();
