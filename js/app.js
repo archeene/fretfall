@@ -315,6 +315,17 @@
   function judge(t) {
     for (const n of state.notes) {
       if (n.judged) continue;
+      // Backing track on = the app is sounding every correct note itself, so credit
+      // each note as it crosses the line (mic re-detection of the synth is lossy and
+      // can't hit 100%). Mic scoring still applies when audio is off.
+      if (state.audioOn && t >= n.time && t <= n.time + HIT_WINDOW) {
+        n.judged = true; n.hit = true; n.flash = 1;
+        state.hits++; state.played++;
+        state.combo += 1; state.maxCombo = Math.max(state.maxCombo, state.combo);
+        state.score += 50 + state.combo * 2;
+        updateHud();
+        continue;
+      }
       // Missed window entirely
       if (t > n.time + HIT_WINDOW) {
         n.judged = true; n.hit = false;
