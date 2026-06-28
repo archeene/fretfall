@@ -83,7 +83,18 @@
     else { tries.push(root + "maj7", root + "7", root); }
     for (const t of tries) if (SHAPES[t]) return SHAPES[t];
 
-    return null;
+    // movable barre fallback so EVERY root/quality resolves (also fixes diagrams)
+    const rs = NOTE_INDEX[root];
+    if (rs === undefined) return null;
+    const m7 = minor && /m7|min7/.test(q);
+    const maj7 = !minor && /maj7/.test(q);
+    const dom7 = !minor && /7/.test(q) && !/maj7/.test(q);
+    const Eshape = m7 ? [0, 2, 0, 0, 0, 0] : minor ? [0, 2, 2, 0, 0, 0] : maj7 ? [0, 2, 1, 1, 0, 0] : dom7 ? [0, 2, 0, 1, 0, 0] : [0, 2, 2, 1, 0, 0];
+    const Ashape = m7 ? [-1, 0, 2, 0, 1, 0] : minor ? [-1, 0, 2, 2, 1, 0] : maj7 ? [-1, 0, 2, 1, 2, 0] : dom7 ? [-1, 0, 2, 0, 2, 0] : [-1, 0, 2, 2, 2, 0];
+    const offE = ((rs - 4) % 12 + 12) % 12;          // barre fret if rooted on low E
+    const offA = ((rs - 9) % 12 + 12) % 12;          // barre fret if rooted on A
+    const [base0, off] = offE <= offA ? [Eshape, offE] : [Ashape, offA];
+    return { frets: base0.map((f) => (f < 0 ? -1 : f + off)), base: off > 0 ? off : 1 };
   }
 
   window.ChordShapes = { getChordShape, NOTE_INDEX };
