@@ -16,10 +16,11 @@ fs.mkdirSync(AUD, { recursive: true });
 
 global.window = {};
 require(path.join(ROOT, "js/songs.js"));
+const filter = process.argv[2] || "";                  // e.g. "vienna-teng" to prioritise
 const chordSongs = global.window.SONGS.filter(
-  (s) => !(s.notes && s.notes.length) && s.text && s.id !== "gravity-vienna-teng"   // gravity already redone
+  (s) => !(s.notes && s.notes.length) && s.text && s.id !== "gravity-vienna-teng" && s.id.includes(filter)
 );
-console.log(`${chordSongs.length} chord songs to (re)transcribe\n`);
+console.log(`${chordSongs.length} chord songs to (re)transcribe${filter ? ` (filter: ${filter})` : ""}\n`);
 
 let ok = 0, fail = 0;
 for (const s of chordSongs) {

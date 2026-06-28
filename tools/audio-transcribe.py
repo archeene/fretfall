@@ -11,6 +11,14 @@ audio, chordsf, out = sys.argv[1], sys.argv[2], sys.argv[3]
 uniq = json.load(open(chordsf))["unique"]
 
 y, sr = librosa.load(audio, sr=22050, mono=True)
+if len(sys.argv) > 4 and sys.argv[4] == "isolate":
+    # light vocal reduction (REPET-SIM): keep the repetitive background (instrumental),
+    # suppress the foreground (vocal). No heavy model — memory-safe.
+    S_full, phase = librosa.magphase(librosa.stft(y))
+    S_filt = np.minimum(S_full, librosa.decompose.nn_filter(
+        S_full, aggregate=np.median, metric="cosine", width=int(librosa.time_to_frames(2, sr=sr))))
+    mask_bg = librosa.util.softmask(S_filt, 10 * (S_full - S_filt), power=2)
+    y = librosa.istft(mask_bg * S_full * phase)
 yh, _ = librosa.effects.hpss(y)
 tempo, beats = librosa.beat.beat_track(y=y, sr=sr, units="frames")
 tempo = float(np.atleast_1d(tempo)[0])
