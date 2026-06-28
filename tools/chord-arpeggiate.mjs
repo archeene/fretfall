@@ -34,21 +34,23 @@ function sounding(shape) {
   return out;
 }
 
+// stretch the learned contour to span the full register, so the arpeggio is melodic
+const hs = pat.template.map((t) => t.height);
+const hmin = Math.min(...hs), hmax = Math.max(...hs), hrange = (hmax - hmin) || 1;
+
 const notes = [];
-let bassToggle = 0;
 chords.forEach((c, ci) => {
   const shape = ChordShapes.getChordShape(c.name);
   if (!shape) return;                                      // unknown chord -> skip its bar
-  const snd = sounding(shape);
+  const snd = sounding(shape);                             // sounding strings low->high
   if (!snd.length) return;
-  const basses = snd.slice(0, Math.min(2, snd.length));    // low 1-2 strings = thumb/bass
-  const trebles = snd.slice(Math.max(1, snd.length - 3));  // top ~3 strings = fingers
-  let arp = 0;
   const barB = ci * SLOTS;                                  // 8 eighths per chord bar
   for (const t of pat.template) {
-    let s;
-    if (t.reg === "bass") { s = basses[bassToggle % basses.length]; bassToggle++; }
-    else { s = trebles[arp % trebles.length]; arp++; }     // ascending arpeggio over fingers
+    // map the audio-learned pitch height (0=low..1=high) to a string in THIS chord,
+    // so the arpeggio follows the real recording's up/down contour
+    const norm = (t.height - hmin) / hrange;            // stretched 0..1 across the song's range
+    const idx = Math.max(0, Math.min(snd.length - 1, Math.round(norm * (snd.length - 1))));
+    const s = snd[idx];
     const f = shape.frets[s];
     if (f < 0) continue;
     notes.push({ b: barB + t.slot, s, f });
