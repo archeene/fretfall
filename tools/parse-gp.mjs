@@ -61,6 +61,11 @@ staff.bars.forEach((bar, i) => {
   cumTicks += barTicks;
 });
 notes.sort((a, b) => a.b - b.b || a.s - b.s);
+// trim leading silence so the song starts immediately (densest track may start late)
+if (notes.length) {
+  const off = notes[0].b;
+  if (off > 0) { for (const n of notes) n.b = +(n.b - off).toFixed(3); for (const c of chordMarks) c.b = +Math.max(0, c.b - off).toFixed(3); }
+}
 const ts0 = score.masterBars[0];
 const barEighths = Math.round(ts0.timeSignatureNumerator * (8 / ts0.timeSignatureDenominator));
 

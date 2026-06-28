@@ -128,6 +128,11 @@ function parseGP(buf) {
     cum += bt;
   });
   notes.sort((a, b) => a.b - b.b || a.s - b.s);
+  // trim leading silence: the densest track often starts after a long intro
+  if (notes.length) {
+    const off = notes[0].b;
+    if (off > 0) { for (const n of notes) n.b = +(n.b - off).toFixed(3); for (const c of chordMarks) c.b = +Math.max(0, c.b - off).toFixed(3); }
+  }
   const t0 = score.masterBars[0];
   const barEighths = Math.round(t0.timeSignatureNumerator * (8 / t0.timeSignatureDenominator));
   return { title: score.title, artist: score.artist, tempo: Math.round(score.tempo) || 90, capo: staff.capo || 0, barEighths, chordMarks, notes };
