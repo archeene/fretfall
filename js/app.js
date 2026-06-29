@@ -394,6 +394,16 @@
     }
   }
 
+  function disableMic() {
+    if (state.detector) { try { state.detector.stop(); } catch (e) {} }
+    state.micOn = false;
+    state.detectedPC = -1;
+    state.detectedName = "—";
+    if (els.detected) els.detected.textContent = "—";
+    els.mic.textContent = "🎤 Enable Mic";
+    els.mic.classList.remove("active");
+  }
+
   const VOTE_WINDOW = 6;   // frames to vote over (~100ms)
   const VOTE_MIN = 2;      // a pitch class must win at least this many votes
   function pollMic() {
@@ -874,7 +884,7 @@
     resetPlayback();
     if (!state.playing) togglePlay();   // restart and immediately play
   });
-  els.mic.addEventListener("click", () => enableMic(true));
+  els.mic.addEventListener("click", () => { if (state.micOn) disableMic(); else enableMic(true); });
   // Auto-enable the mic on the first user interaction (browsers require a gesture).
   const autoMic = () => {
     enableMic(false);
