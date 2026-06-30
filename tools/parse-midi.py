@@ -36,9 +36,15 @@ for i, tr in enumerate(mid.tracks):
     name = next((msg.name for msg in tr if msg.type == "track_name"), "")
     if want.search(name) and not re.search(r"drum", name, re.I):
         keep.add(i)
-if not keep:                                   # no names matched -> any pitched, non-drum track
-    keep = {i for i, tr in enumerate(mid.tracks)
-            if any(m.type == "note_on" and m.velocity > 0 and m.channel != 9 for m in tr)}
+if not keep:                                   # no names matched -> melodic programs only
+    for i, tr in enumerate(mid.tracks):
+        prog = next((m.program for m in tr if m.type == "program_change"), 0)
+        has = any(m.type == "note_on" and m.velocity > 0 and m.channel != 9 for m in tr)
+        if has and prog <= 39:                 # piano(0-7)/chromatic/organ/guitar(24-31)/bass(32-39)
+            keep.add(i)
+    if not keep:                               # last resort: any pitched non-drum
+        keep = {i for i, tr in enumerate(mid.tracks)
+                if any(m.type == "note_on" and m.velocity > 0 and m.channel != 9 for m in tr)}
 
 # walk each kept track, converting tick->sec via the tempo map
 notes = []
