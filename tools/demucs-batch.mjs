@@ -16,7 +16,8 @@ const BIN = `${SCR}/bin`, AUD = `${SCR}/audio`;
 const PY_D = `${SCR}/venv-demucs/bin/python`, PY_L = `${SCR}/venv-lib/bin/python`;
 const ENV = { ...process.env, OMP_NUM_THREADS: "16", MKL_NUM_THREADS: "16", PATH: `${BIN}:${process.env.PATH}` };
 
-const filter = process.argv[2] || "vienna-teng";
+const arg = process.argv[2] || "vienna-teng";
+const filter = arg === "all" ? "" : arg;               // "all" -> every chord song (markers skip the done ones)
 global.window = {};
 require(path.join(ROOT, "js/songs.js"));
 const songs = global.window.SONGS.filter(
