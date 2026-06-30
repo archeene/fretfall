@@ -27,6 +27,8 @@ for (const n of tr.notes) {
   const b = Math.round(n.t * perEighth * 4) / 4;       // quantize to 1/16
   const used = new Set();
   (n.m || []).forEach((midi, i) => {
+    while (midi < 40) midi += 12;                      // fold notes below low-E up into guitar range
+    while (midi > 88) midi -= 12;                      // and very high notes down
     const preferHigh = i > 0;                          // m[0]=bass(low strings), m[1+]=top(high)
     const cands = [];
     for (let s = 0; s < 6; s++) { const f = midi - OPEN[s]; if (f >= 0 && f <= 15 && !used.has(s)) cands.push({ s, f }); }
