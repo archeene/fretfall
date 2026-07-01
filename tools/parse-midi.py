@@ -46,27 +46,31 @@ if not keep:                                   # no names matched -> melodic pro
         keep = {i for i, tr in enumerate(mid.tracks)
                 if any(m.type == "note_on" and m.velocity > 0 and m.channel != 9 for m in tr)}
 
-# walk each kept track, converting tick->sec via the tempo map
+# walk each kept track: exact BEAT position from ticks (lossless), sec via tempo map
 notes = []
 for i in keep:
     abs_tick, on = 0, {}
     for msg in mid.tracks[i]:
         abs_tick += msg.time
         if msg.type == "note_on" and msg.velocity > 0 and msg.channel != 9:
-            on[msg.note] = tick2sec(abs_tick)
+            on[msg.note] = (tick2sec(abs_tick), abs_tick / mid.ticks_per_beat)
         elif msg.type == "note_off" or (msg.type == "note_on" and msg.velocity == 0):
             if msg.note in on:
-                notes.append((on.pop(msg.note), msg.note))
+                t, b = on.pop(msg.note)
+                notes.append((t, b, msg.note))
 # effective bpm from total beats / total seconds
 _end = max((sum(m.time for m in tr) for tr in mid.tracks), default=0)
 _es = tick2sec(_end) or 1
 bpm = round((_end / mid.ticks_per_beat) / (_es / 60.0), 1)
 
-groups = defaultdict(set)
-for t, n in notes:
-    groups[round(t, 2)].add(n)
-out = [{"t": round(t, 3), "m": sorted(ms)} for t, ms in sorted(groups.items())]
+groups = {}
+for t, b, n in notes:
+    k = round(b * 8) / 8                       # group chord strikes on a 32nd grid (beat space)
+    if k not in groups:
+        groups[k] = (t, set())
+    groups[k][1].add(n)
+out = [{"t": round(groups[k][0], 3), "b": round(k, 3), "m": sorted(groups[k][1])} for k in sorted(groups)]
 json.dump({"tempo": bpm, "notes": out}, open(out_path, "w"))
 kept_names = [next((m.name for m in mid.tracks[i] if m.type=="track_name"), str(i)).strip() for i in sorted(keep)]
 print(f"bpm {bpm} | kept {kept_names} | {len(notes)} notes | {len(out)} onsets | "
-      f"span {(max(t for t,_ in notes)-min(t for t,_ in notes)):.0f}s | range {min(n for _,n in notes)}-{max(n for _,n in notes)}")
+      f"span {(max(t for t,_,_ in notes)-min(t for t,_,_ in notes)):.0f}s | range {min(n for _,_,n in notes)}-{max(n for _,_,n in notes)}")

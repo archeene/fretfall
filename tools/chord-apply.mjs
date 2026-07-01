@@ -24,7 +24,9 @@ const perEighth = bpm / 30;                            // seconds -> eighths
 
 const notes = [];
 for (const n of tr.notes) {
-  const b = Math.round(n.t * perEighth * 4) / 4;       // quantize to 1/16
+  // exact beat position (MIDI ticks) when available — no seconds round-trip drift;
+  // fall back to seconds * tempo for audio transcriptions
+  const b = n.b != null ? Math.round(n.b * 2 * 4) / 4 : Math.round(n.t * perEighth * 4) / 4;
   const used = new Set();
   (n.m || []).forEach((midi, i) => {
     while (midi < 40) midi += 12;                      // fold notes below low-E up into guitar range
