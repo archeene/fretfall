@@ -73,21 +73,25 @@ for k in keys:
     mids = [(p, v) for p, v, _ in grp if p not in (mel, bass) and 48 <= p <= 76]
     if mids and mel is None:                           # fill only in melody gaps
         inner = max(mids, key=lambda x: x[1])[0]
+    # octave-free: fold every voice into an easy register (user: "octave does not
+    # need to match, just chords and melody") — melody caps around fret 7 on high e
     m = []
     if bass is not None:
         b = bass
         while b < 40: b += 12
-        while b > 57: b -= 12
+        while b > 52: b -= 12
         m.append(int(b))
     if inner is not None:
         i2 = inner
-        while i2 > 74: i2 -= 12
+        while i2 > 67: i2 -= 12
         while i2 < 50: i2 += 12
         if i2 not in m: m.append(int(i2))
     if mel is not None:
         mm = mel
-        while mm > 79: mm -= 12
-        while mm < 52: mm += 12
+        while mm > 71: mm -= 12
+        while mm < 55: mm += 12
+        while m and mm <= max(m): mm += 12          # melody stays the top voice
+        if mm > 76: mm -= 12                        # absolute cap: fret 12
         if mm not in m: m.append(int(mm))
     if m:
         out.append({"b": round(k / 2.0, 3), "m": m})
