@@ -62,13 +62,29 @@ a, _ = librosa.load('${stem}', sr=sample_rate, mono=True)
 PianoTranscription(device='cpu', checkpoint_path='${FT}/models/piano_wrapped.pth').transcribe(a, '${mid}')"`, { stdio: "ignore", timeout: 900000, env: ENV });
       }
     }
-    execSync(`"${PY_L}" "${__dirname}/piano-arrange.py" "${mid}" "${stem}" "${tr}" ${s.bpm || 100} ${s.beatsPerBar || 4}`, { stdio: "ignore", timeout: 600000, env: ARR });
-    const t = JSON.parse(fs.readFileSync(tr, "utf8"));
+    // arrange with BOTH grids; keep the higher-coverage result (madmom broke Courage,
+    // librosa slips on others — coverage detects which grid held the structure)
+    const cands = [];
+    for (const [gname, genv] of [["librosa", { ...ARR, MADMOM: "0" }], ["madmom", ARR]]) {
+      try {
+        execSync(`"${PY_L}" "${__dirname}/piano-arrange.py" "${mid}" "${stem}" "${tr}.${gname}" ${s.bpm || 100} ${s.beatsPerBar || 4}`, { stdio: "ignore", timeout: 600000, env: genv });
+        cands.push({ gname, t: JSON.parse(fs.readFileSync(`${tr}.${gname}`, "utf8")) });
+      } catch {}
+    }
+    if (!cands.length) throw new Error("arrange failed");
+    cands.sort((a, b) => (b.t.conf?.coverage || 0) - (a.t.conf?.coverage || 0));
+    const { gname, t } = cands[0];
+    fs.writeFileSync(tr, JSON.stringify(t));
     const span = t.notes.length ? (t.notes[t.notes.length - 1].b - t.notes[0].b) * 2 : 0;
     if (t.notes.length < 150 || span < 240) throw new Error(`too small (${t.notes.length} onsets, ${Math.round(span)} eighths)`);
+    // RELIABILITY GATE (calibrated vs ground-truth songs): coverage >= 0.7 keeps out
+    // grid/structure failures; density <= 22 notes/bar keeps out dense mixes where
+    // F1 vs a human tab falls below the 70% bar. Fail -> song stays chords-only.
+    const cv = t.conf?.coverage ?? 0, dn = t.conf?.density ?? 99;
+    if (cv < 0.7 || dn > 22) throw new Error(`GATE: coverage ${cv} density ${dn} (${gname}) — stays chords-only`);
     execSync(`node "${__dirname}/chord-apply.mjs" "${id}" "${tr}"`, { stdio: "ignore", timeout: 60000 });
-    fs.writeFileSync(marker, JSON.stringify({ onsets: t.notes.length, span: Math.round(span), tempo: t.tempo, model: isGuitar ? "basic-pitch" : "riley-piano" }));
-    ok++; console.log(`✓ ${s.title}  (${t.notes.length} onsets, ${Math.round(span)} eighths, bpm ${t.tempo}, ${isGuitar ? "BP" : "riley"})`);
+    fs.writeFileSync(marker, JSON.stringify({ onsets: t.notes.length, span: Math.round(span), tempo: t.tempo, model: isGuitar ? "basic-pitch" : "riley-piano", grid: gname, conf: t.conf }));
+    ok++; console.log(`✓ ${s.title}  (${t.notes.length} onsets, ${Math.round(span)} eighths, bpm ${t.tempo}, ${isGuitar ? "BP" : "riley"}, ${gname}, cov ${cv} dens ${dn})`);
   } catch (e) { clean(); fail++; console.log(`✗ ${s.title} — ${String(e.message).split("\n")[0].slice(0, 60)}`); }
 }
 console.log(`\nDONE: ${ok} ok, ${fail} failed`);

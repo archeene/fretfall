@@ -251,6 +251,25 @@ for bi in range(nbars):
             prev = 0.7 * prev + 0.3 * float(np.mean(m))
             out.append({"b": round((bi * SPB + sl) / 4.0, 3), "m": m})
 
-json.dump({"tempo": round(bpm, 1), "notes": out}, open(outf, "w"))
+# --- self-confidence metrics (no ground truth needed; calibrated vs GT songs) ---
+cons_num = cons_den = 0
+for l, idx in clusters.items():
+    n = len(idx)
+    if n < 2: continue
+    votes, _ = cluster_votes(idx)
+    for i in idx:
+        for sl, grp in repaired[i].items():
+            for p, v in grp:
+                cons_num += votes.get((sl, p % 12), 0) / n
+                cons_den += 1
+consensus = cons_num / cons_den if cons_den else 0.0
+big = sum(len(idx) for idx in clusters.values() if len(idx) >= 3)
+coverage = big / nbars if nbars else 0.0
+grid_cv = float(np.std(np.diff(bt)) / (np.median(np.diff(bt)) + 1e-9))
+conf = {"consensus": round(consensus, 3), "coverage": round(coverage, 3),
+        "grid_cv": round(grid_cv, 3), "bar_types": len(clusters), "bars": nbars,
+        "density": round(len(notes) / max(1, nbars), 1)}
+
+json.dump({"tempo": round(bpm, 1), "notes": out, "conf": conf}, open(outf, "w"))
 print(f"bpm {bpm:.0f} | {len(notes)} notes | {nbars} bars, {len(clusters)} bar-types | "
-      f"{len(out)} onsets ({sum(len(o['m']) for o in out)} guitar notes)")
+      f"{len(out)} onsets ({sum(len(o['m']) for o in out)} guitar notes) | conf {conf}")
