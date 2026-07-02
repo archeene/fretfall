@@ -580,11 +580,19 @@
       let cx = n.lane * laneW + laneW / 2;
       let w = laneW - 16;
       if (!n.isNote) {
-        // chords (strum blocks + chords-mode blocks) span MULTIPLE strings so
-        // they read visually larger than any individual note
-        const spanLanes = 4;
-        const left = Math.max(0, Math.min(LANES - spanLanes, n.lane - (spanLanes - 1) / 2)) * laneW;
-        w = spanLanes * laneW - 16;
+        // chord blocks span EXACTLY the strings the chord actually plays
+        // (from its fingering; muted strings are excluded)
+        if (n._lo === undefined) {
+          const shape = window.ChordShapes && window.ChordShapes.getChordShape(n.name);
+          let lo = 0, hi = LANES - 1;
+          if (shape) {
+            const played = shape.frets.map((f, i) => (f >= 0 ? i : -1)).filter((i) => i >= 0);
+            if (played.length) { lo = played[0]; hi = played[played.length - 1]; }
+          }
+          n._lo = lo; n._hi = hi;
+        }
+        const left = n._lo * laneW;
+        w = (n._hi - n._lo + 1) * laneW - 16;
         cx = left + 8 + w / 2;
       }
       // geometry per type: every note is the SAME fixed-size tile, centred on its
@@ -597,18 +605,14 @@
         top = y - barH / 2;
         labelY = y;
         fontSize = Math.max(11, Math.round(Math.min(barH * 0.62, w * 0.34)));
-        // bridge band across the chord's strings (once, from the anchor note)
-        if (n.chordAnchor && n.chordHi > n.chordLo) {
-          const x0 = n.chordLo * laneW + 8, x1 = (n.chordHi + 1) * laneW - 8;
+        // chord members get a bright ring on THEIR OWN lane only — no band across
+        // unplayed strings (a chord marks only the strings it actually uses)
+        if (inChord) {
           ctx.save();
-          ctx.globalAlpha = n.judged ? 0.2 : 0.5;
-          ctx.fillStyle = "#ffffff";
-          roundRect(x0, y - barH * 0.42, x1 - x0, barH * 0.84, barH * 0.3);
-          ctx.fill();
-          ctx.globalAlpha = n.judged ? 0.3 : 0.8;
+          ctx.globalAlpha = n.judged ? 0.3 : 0.9;
           ctx.strokeStyle = "#ffffff";
-          ctx.lineWidth = 2;
-          roundRect(x0, y - barH * 0.42, x1 - x0, barH * 0.84, barH * 0.3);
+          ctx.lineWidth = 2.5;
+          roundRect(cx - w / 2 - 3, y - barH / 2 - 3, w + 6, barH + 6, barH * 0.3);
           ctx.stroke();
           ctx.restore();
         }
