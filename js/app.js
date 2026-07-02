@@ -577,8 +577,16 @@
       }
       // Every note is shown individually in its lane; chords are surfaced on the
       // right panel, not collapsed on the highway.
-      const cx = n.lane * laneW + laneW / 2;
-      const w = laneW - 16;
+      let cx = n.lane * laneW + laneW / 2;
+      let w = laneW - 16;
+      if (!n.isNote) {
+        // chords (strum blocks + chords-mode blocks) span MULTIPLE strings so
+        // they read visually larger than any individual note
+        const spanLanes = 4;
+        const left = Math.max(0, Math.min(LANES - spanLanes, n.lane - (spanLanes - 1) / 2)) * laneW;
+        w = spanLanes * laneW - 16;
+        cx = left + 8 + w / 2;
+      }
       // geometry per type: every note is the SAME fixed-size tile, centred on its
       // onset. Timing is conveyed by the SPACING between tiles — a longer note leaves
       // a bigger gap before the next one — not by tile size. Strum/chord stay as before.
@@ -593,10 +601,15 @@
         if (n.chordAnchor && n.chordHi > n.chordLo) {
           const x0 = n.chordLo * laneW + 8, x1 = (n.chordHi + 1) * laneW - 8;
           ctx.save();
-          ctx.globalAlpha = n.judged ? 0.15 : 0.3;
+          ctx.globalAlpha = n.judged ? 0.2 : 0.5;
           ctx.fillStyle = "#ffffff";
-          roundRect(x0, y - barH * 0.36, x1 - x0, barH * 0.72, barH * 0.3);
+          roundRect(x0, y - barH * 0.42, x1 - x0, barH * 0.84, barH * 0.3);
           ctx.fill();
+          ctx.globalAlpha = n.judged ? 0.3 : 0.8;
+          ctx.strokeStyle = "#ffffff";
+          ctx.lineWidth = 2;
+          roundRect(x0, y - barH * 0.42, x1 - x0, barH * 0.84, barH * 0.3);
+          ctx.stroke();
           ctx.restore();
         }
       } else if (n.isStrum) {
