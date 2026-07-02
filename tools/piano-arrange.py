@@ -18,11 +18,16 @@ LO, HI = 40, 76
 KEEP = float(os.environ.get("KEEP", 0.34))
 FILL = float(os.environ.get("FILL", 0.6))
 CAP = int(os.environ.get("CAP", 3))
-# chord-prior pc pool (E5): union of the chart's chord tones + their scale
-POOL = None
+# chart chords (root-first pcs). POOL = E5 prior filter (off by default);
+# CHORDS powers HYBRID mode: weak bars fall back to even-rhythm chord tones.
+POOL, CHORDS = None, None
 if len(sys.argv) > 6:
     uniq = json.load(open(sys.argv[6]))["unique"]
-    POOL = set(pc for c in uniq for pc in c["pcs"])
+    CHORDS = [c["pcs"] for c in uniq]
+    if os.environ.get("POOLFILTER", "0") == "1":
+        POOL = set(pc for c in uniq for pc in c["pcs"])
+HYBRID = os.environ.get("HYBRID", "0") == "1"
+WEAK = float(os.environ.get("WEAK", 0.55))
 
 # --- piano notes ---
 mid = mido.MidiFile(midf)
@@ -230,6 +235,45 @@ for l, idx in clusters.items():
                 if c / n >= FILL and (sl, pc) not in have:
                     med = int(np.median(pitch[(sl, pc)]))
                     repaired[i][sl].append((med, 60))
+
+# --- HYBRID fallback: bars where detection is weak play their chart chord in an
+# EVEN quarter-note rhythm (what human tabbers do in dense passages) ---
+if HYBRID and CHORDS:
+    masks = np.array([[1.0 if pc in c else 0.0 for pc in range(12)] for c in CHORDS])
+    masks = masks / (np.linalg.norm(masks, axis=1, keepdims=True) + 1e-9)
+    replaced = 0
+    surv = {}
+    for i in range(nbars):
+        if not bars[i]: continue
+        n = len(clusters[labels[i]])
+        orig = sum(len(g) for g in bars[i].values())
+        kept = sum(len(g) for g in repaired[i].values())
+        surv[i] = (kept / orig if orig else 0.0) * (0.5 if n < 2 else 1.0)
+    # adaptive threshold: a bar is weak RELATIVE to the song's own norm --
+    # fixed thresholds over-replace clean songs and under-replace dense ones
+    med = float(np.median(list(surv.values()))) if surv else 0.0
+    thr = min(WEAK, med * float(os.environ.get("WEAKREL", "0.85")))
+    for i in range(nbars):
+        if i not in surv: continue                     # silence stays silent
+        if surv[i] >= thr: continue
+        # weak bar -> best chart chord from the bar's own (pre-repair) pc energy
+        hist = np.zeros(12)
+        for sl, grp in bars[i].items():
+            for p, v in grp: hist[p % 12] += v
+        if hist.sum() == 0: continue
+        hist = hist / np.linalg.norm(hist)
+        pcs = CHORDS[int(np.argmax(masks @ hist))]
+        root = pcs[0]
+        bass = 40 + ((root - 40) % 12)
+        tones = [52 + ((pc - 52) % 12) for pc in pcs[1:3]]
+        nb = defaultdict(list)
+        for beat in range(BPB):                        # even rhythm: every beat
+            sl = beat * 4
+            nb[sl].append((bass, 70))
+            for t2 in tones: nb[sl].append((t2, 60))
+        repaired[i] = nb
+        replaced += 1
+    print(f"hybrid: {replaced}/{nbars} weak bars -> even-rhythm chords")
 
 # --- figuration output (v2 collapse + contour fold) ---
 out = []

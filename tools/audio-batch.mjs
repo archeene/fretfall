@@ -18,7 +18,7 @@ const FT = "/home/archeene/.fretfall";
 const BIN = `${FT}/bin`;
 const PY_D = `${FT}/venv-demucs/bin/python`, PY_L = `${FT}/venv-lib/bin/python`;
 const ENV = { ...process.env, OMP_NUM_THREADS: "16", MKL_NUM_THREADS: "16", PATH: `${BIN}:${process.env.PATH}` };
-const ARR = { ...ENV, MADMOM: "1", KEEP: "0.6", SHIFTCLUST: "0" };
+const ARR = { ...ENV, MADMOM: "1", KEEP: "0.6", SHIFTCLUST: "0", HYBRID: "1", WEAK: "0.5", WEAKREL: "99" };
 
 const filter = process.argv[2] || "";
 global.window = {};
@@ -62,12 +62,15 @@ a, _ = librosa.load('${stem}', sr=sample_rate, mono=True)
 PianoTranscription(device='cpu', checkpoint_path='${FT}/models/piano_wrapped.pth').transcribe(a, '${mid}')"`, { stdio: "ignore", timeout: 900000, env: ENV });
       }
     }
+    // chord chart for the hybrid fallback (weak bars -> even-rhythm chords)
+    const ch = `${FT}/ch_${id}.json`;
+    execSync(`node "${__dirname}/chord-prep.mjs" "${id}" "${ch}"`, { stdio: "ignore", timeout: 30000 });
     // arrange with BOTH grids; keep the higher-coverage result (madmom broke Courage,
     // librosa slips on others — coverage detects which grid held the structure)
     const cands = [];
     for (const [gname, genv] of [["librosa", { ...ARR, MADMOM: "0" }], ["madmom", ARR]]) {
       try {
-        execSync(`"${PY_L}" "${__dirname}/piano-arrange.py" "${mid}" "${stem}" "${tr}.${gname}" ${s.bpm || 100} ${s.beatsPerBar || 4}`, { stdio: "ignore", timeout: 600000, env: genv });
+        execSync(`"${PY_L}" "${__dirname}/piano-arrange.py" "${mid}" "${stem}" "${tr}.${gname}" ${s.bpm || 100} ${s.beatsPerBar || 4} "${ch}"`, { stdio: "ignore", timeout: 600000, env: genv });
         cands.push({ gname, t: JSON.parse(fs.readFileSync(`${tr}.${gname}`, "utf8")) });
       } catch {}
     }
@@ -77,11 +80,8 @@ PianoTranscription(device='cpu', checkpoint_path='${FT}/models/piano_wrapped.pth
     fs.writeFileSync(tr, JSON.stringify(t));
     const span = t.notes.length ? (t.notes[t.notes.length - 1].b - t.notes[0].b) * 2 : 0;
     if (t.notes.length < 150 || span < 240) throw new Error(`too small (${t.notes.length} onsets, ${Math.round(span)} eighths)`);
-    // RELIABILITY GATE (calibrated vs ground-truth songs): coverage >= 0.7 keeps out
-    // grid/structure failures; density <= 22 notes/bar keeps out dense mixes where
-    // F1 vs a human tab falls below the 70% bar. Fail -> song stays chords-only.
-    const cv = t.conf?.coverage ?? 0, dn = t.conf?.density ?? 99;
-    if (cv < 0.7 || dn > 22) throw new Error(`GATE: coverage ${cv} density ${dn} (${gname}) — stays chords-only`);
+    const cv = t.conf?.coverage ?? 0, dn = t.conf?.density ?? 99;   // logged, not gating:
+    // weak content falls back to even-rhythm chords (HYBRID) instead of skipping
     execSync(`node "${__dirname}/chord-apply.mjs" "${id}" "${tr}"`, { stdio: "ignore", timeout: 60000 });
     fs.writeFileSync(marker, JSON.stringify({ onsets: t.notes.length, span: Math.round(span), tempo: t.tempo, model: isGuitar ? "basic-pitch" : "riley-piano", grid: gname, conf: t.conf }));
     ok++; console.log(`✓ ${s.title}  (${t.notes.length} onsets, ${Math.round(span)} eighths, bpm ${t.tempo}, ${isGuitar ? "BP" : "riley"}, ${gname}, cov ${cv} dens ${dn})`);

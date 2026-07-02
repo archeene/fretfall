@@ -148,6 +148,11 @@
     const evs = [];
     for (const [b, members] of groups) {
       const time = LEAD_SECONDS + b * eighth;
+      // chord metadata: simultaneous notes render larger + visually bridged
+      // across their strings so chords stand apart from single notes
+      const isChord = members.length >= 2;
+      const lanes = members.map((m) => m.s);
+      const loLane = Math.min(...lanes), hiLane = Math.max(...lanes);
       // every note shown individually on the highway
       for (const m of members) {
         const midi = OPEN_MIDI[m.s] + m.f;
@@ -155,6 +160,8 @@
           isNote: true, label: String(m.f), pc: midiToPc(midi), pcs: [midiToPc(midi)],
           string: m.s, fret: m.f, noteName: midiToName(midi), midis: [midi],
           time, lane: m.s, judged: false, hit: false, flash: 0,
+          chordSize: isChord ? members.length : 1,
+          chordAnchor: isChord && m.s === loLane, chordLo: loLane, chordHi: hiLane,
         });
       }
     }
@@ -577,10 +584,21 @@
       // a bigger gap before the next one — not by tile size. Strum/chord stay as before.
       let top, barH, labelY, fontSize;
       if (n.isNote) {
-        barH = Math.min(w * 0.44, 40);                         // uniform note size
+        const inChord = (n.chordSize || 1) >= 2;
+        barH = Math.min(w * 0.44, 40) * (inChord ? 1.35 : 1); // chords render larger
         top = y - barH / 2;
         labelY = y;
         fontSize = Math.max(11, Math.round(Math.min(barH * 0.62, w * 0.34)));
+        // bridge band across the chord's strings (once, from the anchor note)
+        if (n.chordAnchor && n.chordHi > n.chordLo) {
+          const x0 = n.chordLo * laneW + 8, x1 = (n.chordHi + 1) * laneW - 8;
+          ctx.save();
+          ctx.globalAlpha = n.judged ? 0.15 : 0.3;
+          ctx.fillStyle = "#ffffff";
+          roundRect(x0, y - barH * 0.36, x1 - x0, barH * 0.72, barH * 0.3);
+          ctx.fill();
+          ctx.restore();
+        }
       } else if (n.isStrum) {
         const slotPx = ((60 / state.bpm) * (state.song.beatsPerBar || 4) /
           ((state.song.strum || []).length || 8)) * pxPerSec;
