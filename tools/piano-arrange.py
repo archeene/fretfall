@@ -63,8 +63,13 @@ notes = keep
 # --- beat grid + drift refinement (v2) ---
 # GRID_WAV: beat-track a different stem (drums!) than the one transcribed
 y, sr = librosa.load(os.environ.get("GRID_WAV", stemf), sr=22050, mono=True)
-_, beats = librosa.beat.beat_track(y=y, sr=sr, start_bpm=HINT, units="frames")
-bt = librosa.frames_to_time(beats, sr=sr)
+if os.environ.get("MADMOM", "0") == "1":
+    from madmom.features.beats import RNNBeatProcessor, DBNBeatTrackingProcessor
+    act = RNNBeatProcessor()(os.environ.get("GRID_WAV", stemf))
+    bt = DBNBeatTrackingProcessor(fps=100)(act)
+else:
+    _, beats = librosa.beat.beat_track(y=y, sr=sr, start_bpm=HINT, units="frames")
+    bt = librosa.frames_to_time(beats, sr=sr)
 bpm = 60.0 / float(np.median(np.diff(bt)))
 if os.environ.get("GRID") == "const":
     # constant-tempo grid: steady playing + wandering tracker = beat slips that
@@ -96,9 +101,10 @@ q16 = np.round(rb * 4 - drift).astype(int)             # 16th index per note
 # --- bars + leader clustering by (slot,pc) content ---
 nbars = int(q16.max()) // SPB + 1
 bars = [defaultdict(list) for _ in range(nbars)]       # slot -> [(p,v)]
+DW = os.environ.get("DWEIGHT", "0") == "1"
 for (s, d, p, v), q in zip(notes, q16):
     if q < 0: continue
-    bars[q // SPB][q % SPB].append((p, v))
+    bars[q // SPB][q % SPB].append((p, v * (min(1.0, d / 0.25) if DW else 1.0)))
 def fp(bar):                                           # fingerprint
     return {(sl, p % 12) for sl, grp in bar.items() for p, _ in grp}
 def shifted(f, sh):
@@ -147,24 +153,57 @@ def cluster_votes(idx, skip=None):
                 pitch[k].append(p)
     return votes, pitch
 
-# (T1) per-bar PHASE ALIGNMENT: librosa's grid slips by a slot at bar scale;
-# shift each bar +-2 slots to best agree with its cluster's consensus
-for l, idx in clusters.items():
-    if len(idx) < 3: continue
-    for i in idx:
-        votes, _ = cluster_votes(idx, skip=i)
-        mine = {(sl, p % 12) for sl, grp in bars[i].items() for p, _ in grp}
-        def agree(shift):
-            return sum(votes.get(((sl + shift) % SPB, pc), 0) for sl, pc in mine
-                       if 0 <= sl + shift < SPB)
-        best = max((-2, -1, 0, 1, 2), key=lambda sh: (agree(sh), -abs(sh)))
-        if best:
+if os.environ.get("VITERBI", "0") == "1":
+    # (T1v) VITERBI bar-shift healing: grid slips persist over RUNS of bars, so
+    # solve shifts jointly — emission = agreement with own cluster's consensus,
+    # transition penalty for changing shift between adjacent bars.
+    SH = list(range(-4, 5))
+    LAM = 1.5                                          # shift-change penalty
+    consensus = {}
+    for l, idx in clusters.items():
+        consensus[l] = cluster_votes(idx)[0]
+    def emit(i, sh):
+        votes = consensus[labels[i]]
+        n = max(1, len(clusters[labels[i]]))
+        mine = [(sl, p % 12) for sl, grp in bars[i].items() for p, _ in grp]
+        if not mine: return 0.0
+        return sum(votes.get(((sl + sh) % SPB, pc), 0) for sl, pc in mine) / (n * len(mine))
+    E = np.array([[emit(i, sh) for sh in SH] for i in range(nbars)])
+    D = np.full((nbars, len(SH)), -1e9); B = np.zeros((nbars, len(SH)), dtype=int)
+    D[0] = E[0] - 0.05 * np.abs(SH)
+    for i in range(1, nbars):
+        for k in range(len(SH)):
+            prev = D[i - 1] - LAM * np.abs(np.array(SH) - SH[k]) / SPB
+            B[i, k] = int(np.argmax(prev))
+            D[i, k] = prev[B[i, k]] + E[i, k] - 0.02 * abs(SH[k])
+    k = int(np.argmax(D[-1])); path = [0] * nbars
+    for i in range(nbars - 1, -1, -1):
+        path[i] = SH[k]
+        if i: k = B[i, k]
+    for i in range(nbars):
+        if path[i]:
             nb = defaultdict(list)
             for sl, grp in bars[i].items():
-                ns = sl + best
-                if 0 <= ns < SPB: nb[ns].extend(grp)
-                else: nb[sl].extend(grp)               # keep edge notes in place
+                nb[(sl + path[i]) % SPB].extend(grp)
             bars[i] = nb
+else:
+    # (T1) per-bar PHASE ALIGNMENT: greedy +-2 slot shift to cluster consensus
+    for l, idx in clusters.items():
+        if len(idx) < 3: continue
+        for i in idx:
+            votes, _ = cluster_votes(idx, skip=i)
+            mine = {(sl, p % 12) for sl, grp in bars[i].items() for p, _ in grp}
+            def agree(shift):
+                return sum(votes.get(((sl + shift) % SPB, pc), 0) for sl, pc in mine
+                           if 0 <= sl + shift < SPB)
+            best = max((-2, -1, 0, 1, 2), key=lambda sh: (agree(sh), -abs(sh)))
+            if best:
+                nb = defaultdict(list)
+                for sl, grp in bars[i].items():
+                    ns = sl + best
+                    if 0 <= ns < SPB: nb[ns].extend(grp)
+                    else: nb[sl].extend(grp)           # keep edge notes in place
+                bars[i] = nb
 
 repaired = [defaultdict(list) for _ in range(nbars)]
 for l, idx in clusters.items():
