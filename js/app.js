@@ -606,23 +606,15 @@
       // a bigger gap before the next one — not by tile size. Strum/chord stay as before.
       let top, barH, labelY, fontSize;
       if (n.isNote) {
-        const inChord = (n.chordSize || 1) >= 2;
-        barH = Math.min(w * 0.44, 40) * 1.35;          // uniform size (the larger one);
-                                                       // chords stay distinct via the ring
+        barH = Math.min(w * 0.44, 40) * 1.35;          // uniform size (the larger one)
+        // never overlap the neighbour in the same lane: cap height to the gap
+        const gapPx = Math.min(
+          n.gapToNext ? n.gapToNext * pxPerSec : Infinity,
+          n.gapToPrev ? n.gapToPrev * pxPerSec : Infinity);
+        if (isFinite(gapPx)) barH = Math.min(barH, Math.max(14, gapPx - 4));
         top = y - barH / 2;
         labelY = y;
         fontSize = Math.max(11, Math.round(Math.min(barH * 0.62, w * 0.34)));
-        // chord members get a bright ring on THEIR OWN lane only — no band across
-        // unplayed strings (a chord marks only the strings it actually uses)
-        if (inChord) {
-          ctx.save();
-          ctx.globalAlpha = n.judged ? 0.3 : 0.9;
-          ctx.strokeStyle = "#ffffff";
-          ctx.lineWidth = 2.5;
-          roundRect(cx - w / 2 - 3, y - barH / 2 - 3, w + 6, barH + 6, barH * 0.3);
-          ctx.stroke();
-          ctx.restore();
-        }
       } else if (n.isStrum) {
         const slotPx = ((60 / state.bpm) * (state.song.beatsPerBar || 4) /
           ((state.song.strum || []).length || 8)) * pxPerSec;
@@ -646,15 +638,17 @@
       ctx.shadowColor = n.judged ? (n.hit ? "#38ef7d" : "#ff5b6e") : color;
       ctx.shadowBlur = n.flash > 0 ? 30 : 14;
       ctx.fillStyle = n.judged ? (n.hit ? "#1c6b3a" : "#5e2230") : color;
+      ctx.strokeStyle = "rgba(255,255,255,0.85)";
+      ctx.lineWidth = 2;
       if (!n.isNote && n._frLanes && n._frLanes.length > 1) {
         // one segment per FRETTED string — no bar across open/muted strings
         for (const l of n._frLanes) {
           roundRect(l * laneW + 8, top, laneW - 16, barH, radius);
-          ctx.fill();
+          ctx.fill(); ctx.stroke();
         }
       } else {
         roundRect(cx - w / 2, top, w, barH, radius);
-        ctx.fill();
+        ctx.fill(); ctx.stroke();
       }
       ctx.restore();
 
