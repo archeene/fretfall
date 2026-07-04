@@ -573,11 +573,21 @@
     }
 
     // notes
+    // uniform note-tile height + per-lane spacing so same-string notes that fall
+    // too close together sit ADJACENT (not overlapping, not shrunk). Different-lane
+    // notes at the same beat keep their true y, so real chords stay aligned.
+    const noteBarH = Math.min((laneW - 16) * 0.44, 40) * 1.35;
+    const laneLastY = {};                              // last drawn y per lane (time-ascending = y-descending)
     for (const n of state.notes) {
-      const y = hitY - (n.time - t) * pxPerSec;
+      let y = hitY - (n.time - t) * pxPerSec;
       if (y < -110 || y > H + 110) {
         if (n.flash > 0) n.flash = Math.max(0, n.flash - 0.04);
         continue;
+      }
+      if (n.isNote) {                                  // enforce adjacency within a lane
+        const prevY = laneLastY[n.lane];
+        if (prevY !== undefined && prevY - y < noteBarH) y = prevY - noteBarH;
+        laneLastY[n.lane] = y;
       }
       // Every note is shown individually in its lane; chords are surfaced on the
       // right panel, not collapsed on the highway.
