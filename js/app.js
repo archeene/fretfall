@@ -606,12 +606,7 @@
       // a bigger gap before the next one — not by tile size. Strum/chord stay as before.
       let top, barH, labelY, fontSize;
       if (n.isNote) {
-        barH = Math.min(w * 0.44, 40) * 1.35;          // uniform size (the larger one)
-        // never overlap the neighbour in the same lane: cap height to the gap
-        const gapPx = Math.min(
-          n.gapToNext ? n.gapToNext * pxPerSec : Infinity,
-          n.gapToPrev ? n.gapToPrev * pxPerSec : Infinity);
-        if (isFinite(gapPx)) barH = Math.min(barH, Math.max(14, gapPx - 4));
+        barH = Math.min(w * 0.44, 40) * 1.35;          // uniform size for EVERY note tile
         top = y - barH / 2;
         labelY = y;
         fontSize = Math.max(11, Math.round(Math.min(barH * 0.62, w * 0.34)));
