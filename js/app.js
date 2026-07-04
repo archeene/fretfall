@@ -659,9 +659,9 @@
       // light halo so the digit reads even when tiles are tightly packed
       ctx.lineWidth = Math.max(2, fontSize * 0.18);
       const lx = n.isNote ? cx : HW / 2;               // chord names centred on screen
-      ctx.strokeStyle = n.judged ? "rgba(0,0,0,0.35)" : "rgba(255,255,255,0.55)";
+      ctx.strokeStyle = "rgba(0,0,0,0.85)";            // black border for readability
       ctx.strokeText(n.label, lx, labelY);
-      ctx.fillStyle = n.judged ? (n.hit ? "#caffd9" : "#ffd0d6") : "#e8eefc";
+      ctx.fillStyle = n.judged ? (n.hit ? "#caffd9" : "#ffd0d6") : "#ffffff";
       ctx.fillText(n.label, lx, labelY);
 
       if (n.flash > 0) n.flash = Math.max(0, n.flash - 0.04);
