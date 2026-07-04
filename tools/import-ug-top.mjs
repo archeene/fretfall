@@ -117,42 +117,48 @@ for (const diff of [1, 2]) {
   console.log(`difficulty ${diff}: ${rows.length} rows (pool ${cands.size})`);
 }
 
-// exclude songs already in the library
+// exclude songs already in the library (by title) AND tabs already imported (by URL id)
 global.window = {};
 require(path.join(ROOT, "js/songs.js"));
 const libNorm = new Set(global.window.SONGS.map((s) => norm(baseName(s.title.split(" — ")[0]))));
+for (const s of global.window.SONGS) if (s.source) libNorm.add(norm(baseName(String(s.source).split("/").pop().replace(/-guitar-pro-\d+/, "").replace(/-/g, " "))));
+const SEEN_FILE = "/home/archeene/.fretfall/ug_seen.json";
+const seen = new Set(fs.existsSync(SEEN_FILE) ? JSON.parse(fs.readFileSync(SEEN_FILE, "utf8")) : []);
 let list = [...cands.values()]
-  .filter((c) => !libNorm.has(norm(baseName(c.song))))
+  .filter((c) => !seen.has(c.href) && !libNorm.has(norm(baseName(c.song))))
   .sort((a, b) => b.hits - a.hits)
   .slice(0, WANT);
 console.log(`importing ${list.length} songs\n`);
 
-// ---------- download + parse ----------
+// ---------- download + parse (ONE song at a time, gentle pacing) ----------
+const MAX = +(process.env.MAX || 5);                   // songs per run — keep small
+list = list.slice(0, MAX);
+console.log(`this run: ${list.length} songs (MAX=${MAX}), gentle pacing\n`);
 let src = fs.readFileSync(SONGS_FILE, "utf8");
 const existingIds = new Set([...src.matchAll(/id:\s*"([^"]+)"/g)].map((m) => m[1]));
-const entries = [];
 let ok = 0, fail = 0;
 for (const c of list) {
+  const tab = await ctx.newPage();                     // fresh tab per song, closed after
   try {
     // click "Download" and capture the single-use /download/public/ URL the page
     // requests, then re-fetch it IN-PAGE (browser cookies + CF-passing TLS)
     let dlUrl = null;
     const grab = (r) => { const u = r.url(); if (/\/download\/public\//.test(u)) dlUrl = u; };
-    page.on("request", grab);
-    await page.goto(c.href, { waitUntil: "domcontentloaded", timeout: 30000 });
+    tab.on("request", grab);
+    await tab.goto(c.href, { waitUntil: "domcontentloaded", timeout: 45000 });
     let clicked = false;
-    for (let i = 0; i < 20 && !dlUrl; i++) {
-      await new Promise((r) => setTimeout(r, 700));
-      if (!clicked) clicked = await page.evaluate(() => {
+    for (let i = 0; i < 24 && !dlUrl; i++) {
+      await new Promise((r) => setTimeout(r, 800));
+      if (!clicked) clicked = await tab.evaluate(() => {
         const el = [...document.querySelectorAll("button, a, [role=button]")]
           .find((e) => /download/i.test(e.innerText || "") || /download/i.test(e.getAttribute("aria-label") || ""));
         if (el) { el.click(); return true; }
         return false;
       });
     }
-    page.off("request", grab);
+    tab.off("request", grab);
     if (!dlUrl) throw new Error(clicked ? "no download url" : "no download button");
-    const res = await page.evaluate(async (u) => {
+    const res = await tab.evaluate(async (u) => {
       const r = await fetch(u, { credentials: "include" });
       const bytes = new Uint8Array(await r.arrayBuffer());
       let s = "";
@@ -169,18 +175,27 @@ for (const c of list) {
     let n = 2; while (existingIds.has(id)) id = slug(data.title + "-" + data.artist) + "-" + n++;
     existingIds.add(id);
     fs.writeFileSync(path.join(GP_DIR, id + ".gp"), buf);
-    entries.push(entryLiteral(id, data, c.href));
+    // splice this ONE entry into songs.js immediately (crash-proof — a kill mid-run
+    // never loses committed songs)
+    src = fs.readFileSync(SONGS_FILE, "utf8");
+    const close = src.lastIndexOf("];");
+    src = src.slice(0, close) + entryLiteral(id, data, c.href) + "\n" + src.slice(close);
+    fs.writeFileSync(SONGS_FILE, src);
+    seen.add(c.href); fs.writeFileSync(SEEN_FILE, JSON.stringify([...seen]));
     ok++; console.log(`✓ ${c.artist} - ${c.song} → ${id} (${data.notes.length} notes, bpm ${data.tempo})`);
-  } catch (e) { fail++; console.log(`✗ ${c.artist} - ${c.song} — ${String(e.message).slice(0, 60)}`); }
-  await new Promise((r) => setTimeout(r, 1500));
+  } catch (e) {
+    // remember content failures (bad format, too few notes) so we don't retry them;
+    // leave network failures (timeout/closed) retryable
+    if (!/timeout|closed|navigation/i.test(e.message)) { seen.add(c.href); fs.writeFileSync(SEEN_FILE, JSON.stringify([...seen])); }
+    fail++; console.log(`✗ ${c.artist} - ${c.song} — ${String(e.message).slice(0, 60)}`);
+  }
+  finally { await tab.close().catch(() => {}); }
+  await new Promise((r) => setTimeout(r, 4000));        // breathe between songs
 }
-await page.close();
+await page.close().catch(() => {});
 console.log(`\nDONE: ${ok} ok, ${fail} failed`);
 
-if (ok > 0) {
-  const close = src.lastIndexOf("];");
-  src = src.slice(0, close) + entries.join("\n") + "\n" + src.slice(close);
-  fs.writeFileSync(SONGS_FILE, src);
+if (ok > 0) {                                          // final deploy of the batch
   try {
     const v = Date.now();
     const gitEnv = { ...process.env }; delete gitEnv.GIT_WORK_TREE; delete gitEnv.GIT_DIR;
