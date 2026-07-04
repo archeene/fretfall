@@ -584,9 +584,12 @@
         if (n.flash > 0) n.flash = Math.max(0, n.flash - 0.04);
         continue;
       }
-      if (n.isNote) {                                  // enforce adjacency within a lane
+      if (n.isNote) {
+        // chord notes (same beat, ≥2 strings) ALWAYS keep their true y so the chord
+        // stays aligned across strings; only LONE same-string notes get nudged apart
         const prevY = laneLastY[n.lane];
-        if (prevY !== undefined && prevY - y < noteBarH) y = prevY - noteBarH;
+        const isChord = (n.chordSize || 1) >= 2;
+        if (!isChord && prevY !== undefined && prevY - y < noteBarH) y = prevY - noteBarH;
         laneLastY[n.lane] = y;
       }
       // Every note is shown individually in its lane; chords are surfaced on the
