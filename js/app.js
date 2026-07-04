@@ -580,20 +580,22 @@
       let cx = n.lane * laneW + laneW / 2;
       let w = laneW - 16;
       if (!n.isNote) {
-        // chord blocks span EXACTLY the strings the chord actually plays
-        // (from its fingering; muted strings are excluded)
-        if (n._lo === undefined) {
+        // chord blocks appear ONLY on the FRETTED strings (the finger positions —
+        // e.g. C = 3 segments on A/D/B), drawn as one segment per string
+        if (n._frLanes === undefined) {
           const shape = window.ChordShapes && window.ChordShapes.getChordShape(n.name);
-          let lo = 0, hi = LANES - 1;
+          let lanes = null;
           if (shape) {
-            const played = shape.frets.map((f, i) => (f >= 0 ? i : -1)).filter((i) => i >= 0);
-            if (played.length) { lo = played[0]; hi = played[played.length - 1]; }
+            lanes = shape.frets.map((f, i) => (f > 0 ? i : -1)).filter((i) => i >= 0);
+            if (!lanes.length)                          // all-open chord: use played strings
+              lanes = shape.frets.map((f, i) => (f >= 0 ? i : -1)).filter((i) => i >= 0);
           }
-          n._lo = lo; n._hi = hi;
+          n._frLanes = lanes && lanes.length ? lanes : [n.lane];
         }
-        const left = n._lo * laneW;
-        w = (n._hi - n._lo + 1) * laneW - 16;
-        cx = left + 8 + w / 2;
+        const lanes = n._frLanes;
+        const left = lanes[0] * laneW;
+        w = (lanes[lanes.length - 1] - lanes[0] + 1) * laneW - 16;
+        cx = left + 8 + w / 2;                          // label centering only
       }
       // geometry per type: every note is the SAME fixed-size tile, centred on its
       // onset. Timing is conveyed by the SPACING between tiles — a longer note leaves
@@ -637,8 +639,16 @@
       ctx.shadowColor = n.judged ? (n.hit ? "#38ef7d" : "#ff5b6e") : color;
       ctx.shadowBlur = n.flash > 0 ? 30 : 14;
       ctx.fillStyle = n.judged ? (n.hit ? "#1c6b3a" : "#5e2230") : color;
-      roundRect(cx - w / 2, top, w, barH, radius);
-      ctx.fill();
+      if (!n.isNote && n._frLanes && n._frLanes.length > 1) {
+        // one segment per FRETTED string — no bar across open/muted strings
+        for (const l of n._frLanes) {
+          roundRect(l * laneW + 8, top, laneW - 16, barH, radius);
+          ctx.fill();
+        }
+      } else {
+        roundRect(cx - w / 2, top, w, barH, radius);
+        ctx.fill();
+      }
       ctx.restore();
 
       // label: fret number (notes) or chord name (chords)
