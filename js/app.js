@@ -999,12 +999,11 @@
 
   const searchEl = document.getElementById("songSearch");
   if (searchEl) searchEl.addEventListener("input", () => {
+    // filter the dropdown only — the user picks from the list themselves
+    const cur = els.songSelect.value;
     populateSongs(searchEl.value);
-    // auto-load the first match so searching is immediate
-    if (els.songSelect.options.length) {
-      els.songSelect.selectedIndex = 0;
-      loadSongByIndex(+els.songSelect.value);
-    }
+    // keep the current song selected if it survived the filter
+    for (const o of els.songSelect.options) if (o.value === cur) { els.songSelect.value = cur; break; }
   });
 
   // ---- Boot ----
