@@ -123,7 +123,7 @@
           const tok = strum[i];
           if (tok === "-" || tok === ".") continue;      // rest = no strum
           evs.push({
-            isNote: false, isStrum: true, name: c.name, label: c.name,
+            isNote: false, isStrum: true, name: c.name, label: c.name, lyric: c.lyric || "",
             pcs: c.pcs, lane: c.root % LANES,
             time: t + bar * secPerBar + i * secPerSlot,
             judged: false, hit: false, flash: 0,
@@ -665,6 +665,31 @@
       ctx.fillText(n.label, lx, labelY);
 
       if (n.flash > 0) n.flash = Math.max(0, n.flash - 0.04);
+    }
+
+    // current lyric line, synced to the chord at the hit line (bottom bar)
+    {
+      let cur = "", nxt = "";
+      for (const ev of state.notes) {
+        if (ev.lyric === undefined) break;             // note songs: no lyrics
+        if (ev.time <= t + 0.05) { if (ev.lyric) cur = ev.lyric; }
+        else if (ev.lyric && ev.lyric !== cur) { nxt = ev.lyric; break; }
+      }
+      if (cur || nxt) {
+        ctx.fillStyle = "rgba(6,10,20,0.82)";
+        ctx.fillRect(0, H - 52, HW, 52);
+        ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        if (cur) {
+          ctx.font = "700 19px Segoe UI, sans-serif";
+          ctx.fillStyle = "#e8eefc";
+          ctx.fillText(cur, HW / 2, H - 34);
+        }
+        if (nxt) {
+          ctx.font = "400 13px Segoe UI, sans-serif";
+          ctx.fillStyle = "rgba(232,238,252,0.45)";
+          ctx.fillText(nxt, HW / 2, H - 12);
+        }
+      }
     }
 
     // song title + progress

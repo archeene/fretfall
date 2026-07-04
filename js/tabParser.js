@@ -53,13 +53,20 @@
     return [...pcs];
   }
 
-  // Parse full text -> { chords: [{name, pcs, root}], title }
+  // Parse full text -> { chords: [{name, pcs, root, lyric}], title }
   function parseTab(text) {
     const lines = text.split(/\r?\n/);
     const chords = [];
-    for (const line of lines) {
-      if (!looksLikeChordLine(line)) continue;
-      for (const tok of line.trim().split(/\s+/)) {
+    for (let li = 0; li < lines.length; li++) {
+      if (!looksLikeChordLine(lines[li])) continue;
+      // the lyric sung under this chord line = the next non-chord, non-blank line
+      let lyric = "";
+      for (let lj = li + 1; lj < lines.length; lj++) {
+        const cand = lines[lj].trim();
+        if (!cand || looksLikeChordLine(lines[lj])) break;   // gap / instrumental
+        lyric = cand; break;
+      }
+      for (const tok of lines[li].trim().split(/\s+/)) {
         const pcs = chordToPitchClasses(tok);
         if (pcs.length === 0) continue;
         const rootMatch = tok.match(/^([A-G][#b]?)/);
@@ -67,6 +74,7 @@
           name: tok,
           pcs,
           root: rootMatch ? NOTE_INDEX[rootMatch[1]] : pcs[0],
+          lyric,
         });
       }
     }
