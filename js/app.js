@@ -934,7 +934,10 @@
     resetPlayback();
     if (!state.playing) togglePlay();   // restart and immediately play
   });
-  els.mic.addEventListener("click", () => { if (state.micOn) disableMic(); else enableMic(true); });
+  els.mic.addEventListener("click", () => {
+    if (state.micOn) { disableMic(); try { localStorage.setItem("fretfall:mic", "off"); } catch (e) {} }
+    else { enableMic(true); try { localStorage.setItem("fretfall:mic", "on"); } catch (e) {} }
+  });
   // Auto-enable the mic on the first user interaction (browsers require a gesture).
   const autoMic = () => {
     enableMic(false);
@@ -1009,6 +1012,10 @@
   // ---- Boot ----
   resize();
   populateSongs();
+  // mic is ON by default unless the user explicitly disabled it
+  try {
+    if (localStorage.getItem("fretfall:mic") !== "off") enableMic(false);
+  } catch (e) {}
   // Resume whatever song was playing last (falls back to the first song).
   let bootIdx = 0;
   try {
