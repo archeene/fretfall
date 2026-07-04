@@ -111,6 +111,10 @@
     const chordBars = s.chordBars || 1;
     const secPerBar = (60 / state.bpm) * beatsPerBar;
     const secPerSlot = secPerBar / strum.length;
+    // one distinct color per unique chord, evenly spaced around the hue wheel
+    const uniq = [...new Set(chords.map((c) => c.name))];
+    state.chordColors = new Map(uniq.map((name, i) =>
+      [name, `hsl(${Math.round((i * 360) / uniq.length)}, 78%, 60%)`]));
     const evs = [];
     let t = LEAD_SECONDS;
     for (const c of chords) {
@@ -629,7 +633,9 @@
         fontSize = Math.max(9, Math.round(Math.min(barH * 0.6, w * 0.34)));
       }
       const radius = Math.min(w, barH) * 0.26;
-      const color = LANE_COLORS[n.lane % LANE_COLORS.length];
+      const color = n.isNote
+        ? LANE_COLORS[n.lane % LANE_COLORS.length]
+        : ((state.chordColors && state.chordColors.get(n.name)) || LANE_COLORS[n.lane % LANE_COLORS.length]);
 
       ctx.save();
       let alpha = 1;
