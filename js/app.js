@@ -603,7 +603,8 @@
       let top, barH, labelY, fontSize;
       if (n.isNote) {
         const inChord = (n.chordSize || 1) >= 2;
-        barH = Math.min(w * 0.44, 40) * (inChord ? 1.35 : 1); // chords render larger
+        barH = Math.min(w * 0.44, 40) * 1.35;          // uniform size (the larger one);
+                                                       // chords stay distinct via the ring
         top = y - barH / 2;
         labelY = y;
         fontSize = Math.max(11, Math.round(Math.min(barH * 0.62, w * 0.34)));
