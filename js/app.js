@@ -623,7 +623,7 @@
         const slotPx = ((60 / state.bpm) * (state.song.beatsPerBar || 4) /
           ((state.song.strum || []).length || 8)) * pxPerSec;
         barH = Math.min(30, slotPx * 0.7); top = y - barH / 2; labelY = y;
-        fontSize = 22;
+        fontSize = 32;
       } else {
         barH = w * 0.45; top = y - barH / 2; labelY = y;       // chords-mode chord block
         fontSize = Math.max(9, Math.round(Math.min(barH * 0.6, w * 0.34)));
@@ -658,10 +658,11 @@
       ctx.textBaseline = "middle";
       // light halo so the digit reads even when tiles are tightly packed
       ctx.lineWidth = Math.max(2, fontSize * 0.18);
+      const lx = n.isNote ? cx : HW / 2;               // chord names centred on screen
       ctx.strokeStyle = n.judged ? "rgba(0,0,0,0.35)" : "rgba(255,255,255,0.55)";
-      ctx.strokeText(n.label, cx, labelY);
-      ctx.fillStyle = n.judged ? (n.hit ? "#caffd9" : "#ffd0d6") : "#04121a";
-      ctx.fillText(n.label, cx, labelY);
+      ctx.strokeText(n.label, lx, labelY);
+      ctx.fillStyle = n.judged ? (n.hit ? "#caffd9" : "#ffd0d6") : "#e8eefc";
+      ctx.fillText(n.label, lx, labelY);
 
       if (n.flash > 0) n.flash = Math.max(0, n.flash - 0.04);
     }
