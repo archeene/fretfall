@@ -137,7 +137,7 @@ for (const s of songs) {
     const melodic = cands.filter((c) => !c.isBass).sort((a, b) => b.n - a.n);
     const main = melodic[0];
     const lead = melodic.find((c) => c !== main && /lead|riff|melody|solo|intro|pick/i.test(c.t.name || "") && c.n >= 20);
-    const bass = cands.filter((c) => c.isBass).sort((a, b) => b.n - a.n)[0];
+    const bass = process.env.NO_BASS === "1" ? null : cands.filter((c) => c.isBass).sort((a, b) => b.n - a.n)[0];
     const chosen = [main, lead, bass].filter(Boolean);
 
     // 5. convert to eighth-space events, map pitches, merge
