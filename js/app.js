@@ -879,11 +879,13 @@
   }
 
   // ---- Song library ----
-  function populateSongs() {
+  function populateSongs(filter) {
+    const q = (filter || "").trim().toLowerCase();
     els.songSelect.innerHTML = "";
     // show alphabetically by title, but keep each option's value = original index
     window.SONGS
       .map((s, i) => ({ s, i }))
+      .filter(({ s }) => !q || s.title.toLowerCase().includes(q))
       .sort((a, b) => a.s.title.localeCompare(b.s.title, undefined, { sensitivity: "base" }))
       .forEach(({ s, i }) => {
         const opt = document.createElement("option");
@@ -899,6 +901,7 @@
   function loadSongByIndex(i) {
     const s = window.SONGS[i];
     if (!s) return;
+    try { localStorage.setItem("fretfall:lastSong", s.id); } catch (e) {}
     loadSongObject(s);
   }
 
@@ -994,12 +997,28 @@
     }
   });
 
+  const searchEl = document.getElementById("songSearch");
+  if (searchEl) searchEl.addEventListener("input", () => {
+    populateSongs(searchEl.value);
+    // auto-load the first match so searching is immediate
+    if (els.songSelect.options.length) {
+      els.songSelect.selectedIndex = 0;
+      loadSongByIndex(+els.songSelect.value);
+    }
+  });
+
   // ---- Boot ----
   resize();
   populateSongs();
-  // Load the default (first) song so users can just hit Play.
-  loadSongByIndex(0);
-  els.songSelect.value = 0;
+  // Resume whatever song was playing last (falls back to the first song).
+  let bootIdx = 0;
+  try {
+    const last = localStorage.getItem("fretfall:lastSong");
+    const li = window.SONGS.findIndex((s) => s.id === last);
+    if (li >= 0) bootIdx = li;
+  } catch (e) {}
+  loadSongByIndex(bootIdx);
+  els.songSelect.value = bootIdx;
   els.hint.classList.remove("gone"); // keep hint until they interact
   requestAnimationFrame(frame);
 })();
