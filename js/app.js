@@ -445,7 +445,7 @@
     if (!state.audioCtx) {
       state.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       state.audioMaster = state.audioCtx.createGain();
-      state.audioMaster.gain.value = 0.22;
+      state.audioMaster.gain.value = 0.32;
       state.audioMaster.connect(state.audioCtx.destination);
     }
     state.audioOn = !state.audioOn;
@@ -485,24 +485,52 @@
     return ev.pcs.map((pc) => 48 + pc + state.capo).sort((a, b) => a - b); // chord-mode voicing
   }
 
+  // Karplus-Strong plucked string: a noise burst fed through a short delay line with
+  // a decaying averaging (low-pass) filter — physically models a vibrating string,
+  // so it sounds like a real plucked guitar rather than a synth beep.
+  function guitarBuffer(ctx, freq, dur) {
+    const sr = ctx.sampleRate;
+    const N = Math.max(2, Math.round(sr / freq));        // delay line = one period
+    const len = Math.floor(sr * dur);
+    const buf = ctx.createBuffer(1, len, sr);
+    const out = buf.getChannelData(0);
+    const line = new Float32Array(N);
+    // pluck excitation: noise, slightly low-passed so it's warm not fizzy
+    let last = 0;
+    for (let i = 0; i < N; i++) { const w = Math.random() * 2 - 1; last = 0.5 * (w + last); line[i] = last; }
+    // higher strings ring longer; lower strings damp a touch faster — tuned for guitar
+    const decay = Math.min(0.9975, 0.994 + freq / 40000);
+    let idx = 0;
+    for (let i = 0; i < len; i++) {
+      const cur = line[idx];
+      const nxt = line[(idx + 1) % N];
+      out[i] = cur;
+      line[idx] = 0.5 * (cur + nxt) * decay;             // averaging low-pass + string damping
+      idx = (idx + 1) % N;
+    }
+    return buf;
+  }
+
   function playPitch(when, midi) {
     const ctx = state.audioCtx;
     const freq = 440 * Math.pow(2, (midi - 69) / 12);
-    const dur = 0.8;
-    const osc = ctx.createOscillator();
-    osc.type = "triangle";
-    osc.frequency.value = freq;
+    const dur = 1.6;
+    const src = ctx.createBufferSource();
+    src.buffer = guitarBuffer(ctx, freq, dur);
+    // body/tone shaping: roll off the very top so it reads acoustic, not brittle
     const lp = ctx.createBiquadFilter();
     lp.type = "lowpass";
-    lp.frequency.value = Math.min(5000, freq * 6);
+    lp.frequency.setValueAtTime(Math.min(9000, freq * 8), when);
+    lp.frequency.exponentialRampToValueAtTime(Math.max(700, freq * 2.5), when + dur); // brightness fades as it rings
+    lp.Q.value = 0.7;
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, when);
-    g.gain.linearRampToValueAtTime(0.6, when + 0.006);          // pluck attack
-    g.gain.exponentialRampToValueAtTime(0.0008, when + dur);     // decay
-    osc.connect(lp); lp.connect(g); g.connect(state.audioMaster);
-    osc.start(when);
-    osc.stop(when + dur + 0.05);
-    state.audioSources.push({ osc, g });
+    g.gain.linearRampToValueAtTime(0.9, when + 0.004);   // sharp pick attack
+    g.gain.exponentialRampToValueAtTime(0.0006, when + dur);
+    src.connect(lp); lp.connect(g); g.connect(state.audioMaster);
+    src.start(when);
+    src.stop(when + dur + 0.05);
+    state.audioSources.push({ osc: src, g });
   }
 
   function scheduleAudio(t) {
