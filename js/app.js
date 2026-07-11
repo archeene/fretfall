@@ -269,7 +269,10 @@
     // Campaign lessons trim to a focused segment so a step is learnable, not a
     // 4-minute grind of the full repeated sheet. The Song menu plays uncapped.
     if (state.lessonCapSec) {
-      const limit = LEAD_SECONDS + state.lessonCapSec;
+      // Target a total playthrough of ~lessonCapSec seconds. Content runs from the
+      // lead-in (t=LEAD) to (cap - LEAD); songLength then adds the trailing LEAD,
+      // so the whole segment plays in about lessonCapSec seconds at any tempo.
+      const limit = Math.max(LEAD_SECONDS, state.lessonCapSec - LEAD_SECONDS);
       state.notes = state.notes.filter((n) => n.time <= limit);
       if (state.chords) state.chords = state.chords.filter((c) => c.time <= limit);
     }
