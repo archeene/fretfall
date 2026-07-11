@@ -122,12 +122,17 @@
     if (!p.campaign) p.campaign = { done: {}, loops: {}, badges: [] };
     return p.campaign;
   }
-  const stepDone = (step) => {
+  // Clearing the boss gate = step complete and next step unlocked. Warm-up and
+  // loop drills are bonus quests (they tick and give the satisfaction, but don't
+  // block advancement — you shouldn't have to loop a song you just aced).
+  const stepDone = (step) => !!(prog().done[step.id] || {}).boss;
+  const allQuestsDone = (step) => {
     const d = prog().done[step.id] || {};
     return d.warmup && d.loops && d.boss;
   };
   const unlocked = (step) => step.n === 1 || stepDone(STEPS[step.n - 2]);
   const current = () => STEPS.find((s) => !stepDone(s)) || STEPS[STEPS.length - 1];
+  const nextStep = (step) => (step.n < STEPS.length ? STEPS[step.n] : null);
   const songIndexOf = (step) => window.SONGS.findIndex((s) => s.id === step.songId);
   const stepForSong = (song) => song && STEPS.find((s) => s.songId === song.id);
 
@@ -181,6 +186,7 @@
       step,
       unlocked: unlocked(step),
       done: stepDone(step),
+      allDone: allQuestsDone(step),
       quests: questsFor(step).map((q) => ({
         ...q,
         done: !!d[q.id],
@@ -193,7 +199,7 @@
 
   window.Campaign = {
     STEPS, BADGES,
-    view, current, unlocked, stepDone, stepForSong, songIndexOf,
+    view, current, unlocked, stepDone, allQuestsDone, nextStep, stepForSong, songIndexOf,
     onRun, onCleanPass,
   };
 })();

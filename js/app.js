@@ -21,7 +21,7 @@
     resultsBadge: $("resultsBadge"), resScore: $("resScore"), resAcc: $("resAcc"),
     resCombo: $("resCombo"), resPerfect: $("resPerfect"), resBest: $("resBest"),
     resSections: $("resSections"), resLoopWorst: $("resLoopWorst"),
-    resReplay: $("resReplay"), resClose: $("resClose"),
+    resReplay: $("resReplay"), resClose: $("resClose"), resNextStep: $("resNextStep"),
     statsModal: $("statsModal"), statsClose: $("statsClose"),
     statsSummary: $("statsSummary"), statsCal: $("statsCal"), statsLadder: $("statsLadder"),
     toasts: $("toasts"),
@@ -1288,9 +1288,43 @@
       div.addEventListener("click", () => loopSection(s));
       els.resSections.appendChild(div);
     });
+    updateResultsNextButton();
     els.resultsModal.classList.remove("hidden");
     updateGoalRing();
   }
+
+  // Show a "Next step" button on the results screen when this song is a campaign
+  // step. If the step was just cleared, it points to the newly-unlocked next
+  // step; if not yet cleared, it opens the step card to show remaining quests.
+  function updateResultsNextButton() {
+    const C = window.Campaign;
+    const step = C && C.stepForSong(state.song);
+    const btn = els.resNextStep;
+    if (!step) { btn.classList.add("hidden"); els.resClose.classList.add("primary"); return; }
+    const next = C.nextStep(step);
+    if (next && C.unlocked(next)) {                 // current cleared → advance
+      btn.textContent = `Next: ${next.title.replace(/ —.*/, "")} ›`;
+      btn._target = { kind: "step", n: next.n };
+      btn.classList.remove("hidden");
+      btn.classList.add("primary"); els.resClose.classList.remove("primary");
+    } else if (step.n === 10 && C.stepDone(step)) { // final step cleared
+      btn.textContent = "🏔️ Campaign complete";
+      btn._target = { kind: "stats" };
+      btn.classList.remove("hidden", "primary"); els.resClose.classList.add("primary");
+    } else {                                        // not cleared yet → show quests
+      btn.textContent = "View quests ›";
+      btn._target = { kind: "card", step };
+      btn.classList.remove("hidden", "primary"); els.resClose.classList.add("primary");
+    }
+  }
+
+  els.resNextStep.addEventListener("click", () => {
+    const t = els.resNextStep._target || {};
+    els.resultsModal.classList.add("hidden");
+    if (t.kind === "step") openCampaignStep(window.Campaign.STEPS[t.n - 1]);
+    else if (t.kind === "card") openCampaignStep(t.step);
+    else if (t.kind === "stats") openStats();
+  });
 
   els.resClose.addEventListener("click", () => els.resultsModal.classList.add("hidden"));
   els.resReplay.addEventListener("click", () => {
@@ -1390,10 +1424,11 @@
     // quests
     els.campQuests.innerHTML = "";
     for (const q of v.quests) {
+      const isGate = q.id === "boss";
       const row = document.createElement("div");
-      row.className = "quest-row" + (q.done ? " done" : "");
+      row.className = "quest-row" + (q.done ? " done" : "") + (isGate ? " gate" : "");
       const prog = q.target ? ` (${q.progress}/${q.target})` : "";
-      row.innerHTML = `<span class="quest-check">${q.done ? "✓" : "○"}</span>` +
+      row.innerHTML = `<span class="quest-check">${q.done ? "✓" : isGate ? "★" : "○"}</span>` +
         `<span class="quest-desc">${q.desc}${q.done ? "" : prog}</span>`;
       els.campQuests.appendChild(row);
     }

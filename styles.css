@@ -323,7 +323,10 @@ html, body {
   border: 1px solid rgba(255, 255, 255, 0.06);
 }
 .quest-row.done { border-color: rgba(56, 239, 125, 0.4); background: rgba(56, 239, 125, 0.08); }
+.quest-row.gate { border-color: rgba(255, 209, 102, 0.4); background: rgba(255, 209, 102, 0.06); }
+.quest-row.gate.done { border-color: rgba(56, 239, 125, 0.4); background: rgba(56, 239, 125, 0.08); }
 .quest-check { font-size: 16px; font-weight: 800; color: var(--muted); width: 18px; text-align: center; }
+.quest-row.gate .quest-check { color: #ffd166; }
 .quest-row.done .quest-check { color: var(--good); }
 .quest-desc { font-size: 14px; }
 .camp-lessons { display: flex; flex-direction: column; gap: 6px; }
