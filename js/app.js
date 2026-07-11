@@ -61,6 +61,7 @@
     audioMaster: null,
     audioPtr: 0,        // index into state.notes of the next event to schedule
     audioSources: [],   // currently sounding oscillators
+    lessonCapSec: null, // when set, trim the timeline to a focused lesson segment
     speed: 1,           // practice speed multiplier (0.5–1.0) applied to the tempo
     perfects: 0,        // hits graded Perfect this run
     sections: [],       // per-section accuracy: {t0, t1, hits, played}
@@ -265,6 +266,13 @@
   }
 
   function finishTimeline() {
+    // Campaign lessons trim to a focused segment so a step is learnable, not a
+    // 4-minute grind of the full repeated sheet. The Song menu plays uncapped.
+    if (state.lessonCapSec) {
+      const limit = LEAD_SECONDS + state.lessonCapSec;
+      state.notes = state.notes.filter((n) => n.time <= limit);
+      if (state.chords) state.chords = state.chords.filter((c) => c.time <= limit);
+    }
     state.songLength = state.notes.length
       ? state.notes[state.notes.length - 1].time + LEAD_SECONDS
       : 0;
@@ -1086,9 +1094,11 @@
         els.songSelect.appendChild(opt);
       });
   }
-  function loadSongByIndex(i) {
+  function loadSongByIndex(i, opts) {
     const s = window.SONGS[i];
     if (!s) return;
+    // Campaign-loaded songs are trimmed to a focused lesson segment.
+    state.lessonCapSec = (opts && opts.campaign) ? 100 : null;
     try { localStorage.setItem("fretfall:lastSong", s.id); } catch (e) {}
     loadSongObject(s);
     // reflect this song's campaign step (if any) in the second dropdown
@@ -1442,7 +1452,7 @@
     const v = window.Campaign.view(campViewStep);
     if (!v.unlocked || v.songIndex < 0) return;
     els.campModal.classList.add("hidden");
-    loadSongByIndex(v.songIndex);
+    loadSongByIndex(v.songIndex, { campaign: true });
     els.songSelect.value = v.songIndex;
     refreshCampaignUI();
   });

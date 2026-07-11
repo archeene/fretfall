@@ -310,6 +310,10 @@ html, body {
   background: rgba(255, 255, 255, 0.05); border-radius: 12px;
 }
 .camp-song b { font-size: 15px; }
+.camp-song .camp-seg {
+  font-size: 11px; font-weight: 700; color: var(--accent);
+  background: rgba(41, 224, 200, 0.12); padding: 2px 8px; border-radius: 999px;
+}
 .camp-song .btn { margin-left: auto; }
 .camp-quests { display: flex; flex-direction: column; gap: 8px; }
 .quest-row {
