@@ -13,6 +13,24 @@
     hint: $("hint"), progress: $("progress"), progressFill: $("progressFill"),
     loopRegion: $("loopRegion"), loopA: $("loopA"), loopB: $("loopB"),
     capoBadge: $("capoBadge"),
+    speed: $("speed"), speedVal: $("speedVal"),
+    scoreVal: $("scoreVal"), multVal: $("multVal"),
+    ringFill: $("ringFill"), ringText: $("ringText"), goalRing: $("goalRing"),
+    streakVal: $("streakVal"), btnStats: $("btnStats"),
+    resultsModal: $("resultsModal"), resultsTitle: $("resultsTitle"), resultsStars: $("resultsStars"),
+    resultsBadge: $("resultsBadge"), resScore: $("resScore"), resAcc: $("resAcc"),
+    resCombo: $("resCombo"), resPerfect: $("resPerfect"), resBest: $("resBest"),
+    resSections: $("resSections"), resLoopWorst: $("resLoopWorst"),
+    resReplay: $("resReplay"), resClose: $("resClose"),
+    statsModal: $("statsModal"), statsClose: $("statsClose"),
+    statsSummary: $("statsSummary"), statsCal: $("statsCal"), statsLadder: $("statsLadder"),
+    toasts: $("toasts"),
+    campSelect: $("campSelect"),
+    campModal: $("campModal"), campClose: $("campClose"),
+    campStepNum: $("campStepNum"), campTitle: $("campTitle"), campBoss: $("campBoss"),
+    campSkill: $("campSkill"), campSong: $("campSong"), campPlay: $("campPlay"),
+    campQuests: $("campQuests"), campLessons: $("campLessons"), campReward: $("campReward"),
+    campPrev: $("campPrev"), campNext: $("campNext"),
   };
 
   // ---- State ----
@@ -43,7 +61,20 @@
     audioMaster: null,
     audioPtr: 0,        // index into state.notes of the next event to schedule
     audioSources: [],   // currently sounding oscillators
+    speed: 1,           // practice speed multiplier (0.5–1.0) applied to the tempo
+    perfects: 0,        // hits graded Perfect this run
+    sections: [],       // per-section accuracy: {t0, t1, hits, played}
+    floaters: [],       // rising judgment texts: {lane, text, color, born}
+    runShown: false,    // results already shown for this run
+    playAccumSec: 0,    // seconds of playtime not yet flushed to Meta
+    lastFrameTs: 0,     // performance.now() of the previous frame
+    passMarkHits: 0,    // hits/played at the start of the current loop pass —
+    passMarkPlayed: 0,  //   used to grade each pass for auto speed-up
+    cleanPasses: 0,     // consecutive ≥95% loop passes at the current speed
   };
+
+  // Practice speed scales the effective tempo everywhere timing is derived.
+  const bpmEff = () => state.bpm * state.speed;
 
   // ---- Layout constants ----
   const LEAD_SECONDS = 3;       // how far ahead a note is visible above hit line
@@ -109,7 +140,7 @@
     const strum = (s.strum && s.strum.length) ? s.strum : DEFAULT_STRUM;
     const beatsPerBar = s.beatsPerBar || 4;
     const chordBars = s.chordBars || 1;
-    const secPerBar = (60 / state.bpm) * beatsPerBar;
+    const secPerBar = (60 / bpmEff()) * beatsPerBar;
     const secPerSlot = secPerBar / strum.length;
     // one distinct color per unique chord, evenly spaced around the hue wheel
     const uniq = [...new Set(chords.map((c) => c.name))];
@@ -141,7 +172,7 @@
   // Each source note is {b, s, f}: b = eighth-note index, s = string (0=lowE),
   // f = fret. Lane = string; pitch class derived from tuning.
   function buildNoteTimeline(song) {
-    const eighth = (60 / state.bpm) / 2;   // 6/8 feel: count in eighth notes
+    const eighth = (60 / bpmEff()) / 2;   // 6/8 feel: count in eighth notes
     // group source notes by their beat position (simultaneous notes share `b`)
     const groups = new Map();
     const srcNotes = (song.notes && song.notes.length) ? song.notes : (song.picked || []);
@@ -237,6 +268,27 @@
     state.songLength = state.notes.length
       ? state.notes[state.notes.length - 1].time + LEAD_SECONDS
       : 0;
+    buildSections();
+  }
+
+  // Split the song into 4–8 time sections so the results screen can show
+  // where the misses live (and loop straight into the worst one).
+  function buildSections() {
+    if (!state.notes.length) { state.sections = []; return; }
+    const first = state.notes[0].time;
+    const last = state.notes[state.notes.length - 1].time;
+    const dur = Math.max(1, last - first);
+    const N = Math.max(4, Math.min(8, Math.round(dur / 12)));
+    state.sections = Array.from({ length: N }, (_, i) => ({
+      t0: first + (dur * i) / N,
+      t1: first + (dur * (i + 1)) / N,
+      hits: 0, played: 0,
+    }));
+  }
+
+  function sectionAt(time) {
+    for (const s of state.sections) if (time >= s.t0 && time <= s.t1) return s;
+    return state.sections[state.sections.length - 1] || null;
   }
 
   function buildCurrentTimeline() {
@@ -276,6 +328,11 @@
     state.maxCombo = 0;
     state.hits = 0;
     state.played = 0;
+    state.perfects = 0;
+    state.floaters = [];
+    state.runShown = false;
+    state.passMarkHits = 0; state.passMarkPlayed = 0; state.cleanPasses = 0;
+    for (const s of state.sections) { s.hits = 0; s.played = 0; }
     state.notes.forEach((n) => { n.flash = 0; n.hit = false; n.judged = n.time < startT; });
     els.play.textContent = "▶ Play";
     stopAllAudio();
@@ -296,6 +353,7 @@
       state.playing = false;
       els.play.textContent = "▶ Play";
       stopAllAudio();
+      flushPlayTime();
     } else {
       // if we're outside the practice loop, start at the loop's beginning
       const frac = state.songLength ? state.pausedAt / state.songLength : 0;
@@ -326,6 +384,27 @@
   }
 
   // ---- Scoring ----
+  // Combo multiplier: ×1 → ×4, stepping up every 10 consecutive hits.
+  const multiplier = () => 1 + Math.min(3, Math.floor(state.combo / 10));
+
+  // Timing grades within the hit window (delta = seconds from the note's onset).
+  function gradeFor(delta) {
+    const a = Math.abs(delta);
+    if (a <= 0.12) return { text: "Perfect", color: "#29e0c8", perfect: true };
+    if (a <= 0.25) return { text: "Good", color: "#ffd166" };
+    return delta > 0 ? { text: "Late", color: "#8a96b8" } : { text: "Early", color: "#8a96b8" };
+  }
+
+  function addFloater(lane, text, color) {
+    state.floaters.push({ lane, text, color, born: performance.now() });
+    if (state.floaters.length > 24) state.floaters.shift();
+  }
+
+  function creditSection(time, hit) {
+    const s = sectionAt(time);
+    if (s) { s.played++; if (hit) s.hits++; }
+  }
+
   function judge(t) {
     for (const n of state.notes) {
       if (n.judged) continue;
@@ -335,8 +414,9 @@
       if (state.audioOn && t >= n.time && t <= n.time + HIT_WINDOW) {
         n.judged = true; n.hit = true; n.flash = 1;
         state.hits++; state.played++;
+        creditSection(n.time, true);
         state.combo += 1; state.maxCombo = Math.max(state.maxCombo, state.combo);
-        state.score += 50 + state.combo * 2;
+        state.score += 50 * multiplier();
         updateHud();
         continue;
       }
@@ -345,7 +425,9 @@
         n.judged = true; n.hit = false;
         state.combo = 0;
         state.played++;
+        creditSection(n.time, false);
         n.flash = 1;
+        addFloater(n.lane, "Miss", "#ff5b6e");
         updateHud();
         continue;
       }
@@ -355,8 +437,13 @@
         if (n.pcs.some((pc) => (pc + state.capo) % 12 === state.detectedPC)) {
           n.judged = true; n.hit = true; n.flash = 1;
           state.hits++; state.played++;
-          const closeness = 1 - Math.abs(t - n.time) / HIT_WINDOW;
-          state.score += Math.round(50 + 50 * closeness + state.combo * 2);
+          creditSection(n.time, true);
+          const delta = t - n.time;
+          const grade = gradeFor(delta);
+          if (grade.perfect) state.perfects++;
+          addFloater(n.lane, grade.text, grade.color);
+          const closeness = 1 - Math.abs(delta) / HIT_WINDOW;
+          state.score += Math.round((50 + 50 * closeness) * multiplier());
           state.combo += 1;
           state.maxCombo = Math.max(state.maxCombo, state.combo);
           // Double-stops: notes struck together count once — credit the siblings.
@@ -365,6 +452,7 @@
               if (!m.judged && m.isNote && Math.abs(m.time - n.time) < 0.001) {
                 m.judged = true; m.hit = true; m.flash = 1;
                 state.hits++; state.played++;
+                creditSection(m.time, true);
               }
             }
           }
@@ -380,6 +468,12 @@
     els.hitCount.textContent = state.hits;
     els.playedCount.textContent = state.played;
     els.detected.textContent = state.detectedName;
+    if (els.scoreVal) els.scoreVal.textContent = state.score.toLocaleString();
+    if (els.multVal) {
+      const m = multiplier();
+      els.multVal.textContent = "×" + m;
+      els.multVal.className = "mult m" + m;
+    }
   }
 
   // ---- Microphone ----
@@ -652,7 +746,7 @@
         labelY = y;
         fontSize = Math.max(11, Math.round(Math.min(barH * 0.62, w * 0.34)));
       } else if (n.isStrum) {
-        const slotPx = ((60 / state.bpm) * (state.song.beatsPerBar || 4) /
+        const slotPx = ((60 / bpmEff()) * (state.song.beatsPerBar || 4) /
           ((state.song.strum || []).length || 8)) * pxPerSec;
         barH = Math.min(30, slotPx * 0.7); top = y - barH / 2; labelY = y;
         fontSize = 32;
@@ -701,6 +795,26 @@
       ctx.fillText(n.label, lx, labelY);
 
       if (n.flash > 0) n.flash = Math.max(0, n.flash - 0.04);
+    }
+
+    // rising judgment texts (Perfect / Good / Late / Early / Miss) at the hit line
+    {
+      const now = performance.now();
+      state.floaters = state.floaters.filter((f) => now - f.born < 700);
+      for (const f of state.floaters) {
+        const age = (now - f.born) / 700;                  // 0 → 1
+        const fx = f.lane * laneW + laneW / 2;
+        const fy = hitY - 34 - age * 46;
+        ctx.save();
+        ctx.globalAlpha = 1 - age;
+        ctx.font = "800 16px Segoe UI, sans-serif";
+        ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.lineWidth = 3; ctx.strokeStyle = "rgba(0,0,0,0.7)";
+        ctx.strokeText(f.text, fx, fy);
+        ctx.fillStyle = f.color;
+        ctx.fillText(f.text, fx, fy);
+        ctx.restore();
+      }
     }
 
     // current lyric line, synced to the chord at the hit line (bottom bar)
@@ -916,12 +1030,25 @@
   // ---- Main loop ----
   function frame() {
     pollMic();
+    const now = performance.now();
+    if (state.playing && state.lastFrameTs) {
+      // accumulate real practice time; flush to the profile every ~10s so the
+      // daily-goal ring moves while you play (not just at the end)
+      state.playAccumSec += (now - state.lastFrameTs) / 1000;
+      if (state.playAccumSec >= 10) flushPlayTime();
+    }
+    state.lastFrameTs = now;
     if (state.playing) {
       let t = songTime();
       const looping = state.loopA > 0.001 || state.loopB < 0.999;  // region narrowed?
       if (state.songLength && t >= state.loopB * state.songLength) {
-        if (looping) { seekTo(state.loopA); t = songTime(); }      // jump back to A
-        else { state.playing = false; els.play.textContent = "▶ Play"; }  // play-through ends
+        if (looping) {
+          gradeLoopPass();                                         // auto speed-up check
+          seekTo(state.loopA); t = songTime();                     // jump back to A
+        } else {
+          state.playing = false; els.play.textContent = "▶ Play";  // play-through ends
+          finishRun();
+        }
       }
       judge(t);
       if (state.audioOn && state.audioCtx) scheduleAudio(t);
@@ -964,6 +1091,11 @@
     if (!s) return;
     try { localStorage.setItem("fretfall:lastSong", s.id); } catch (e) {}
     loadSongObject(s);
+    // reflect this song's campaign step (if any) in the second dropdown
+    if (window.Campaign && els.campSelect) {
+      const step = window.Campaign.stepForSong(s);
+      els.campSelect.value = step ? String(step.n) : "";
+    }
   }
 
   // Show the toggle only when the song has BOTH a note track and a chord chart,
@@ -988,6 +1120,340 @@
     updateModeButton();
     resetPlayback();
   }
+
+  // ---- Progression: playtime, goal ring, streak, toasts ----
+  function flushPlayTime() {
+    if (state.playAccumSec < 0.5) { state.playAccumSec = 0; return; }
+    const res = window.Meta.addPlayTime(state.playAccumSec);
+    state.playAccumSec = 0;
+    updateGoalRing();
+    if (res.goalJustMet) {
+      toast(`🎯 Daily goal done — ${res.streak} day streak!`, "good");
+      els.goalRing.classList.add("met");
+    }
+    if (res.freezeEarned) toast("🧊 Streak freeze earned — one missed day is covered.", "info");
+  }
+
+  function updateGoalRing() {
+    const goal = window.Meta.profile.goalMin;
+    const min = window.Meta.todayMinutes();
+    const frac = Math.min(1, min / goal);
+    const C = 2 * Math.PI * 18;                       // ring circumference (r=18)
+    els.ringFill.style.strokeDasharray = `${C * frac} ${C}`;
+    els.ringText.textContent = min >= goal ? "✓" : `${Math.floor(min)}m`;
+    els.goalRing.classList.toggle("met", min >= goal);
+    els.streakVal.textContent = window.Meta.profile.streak.cur;
+  }
+
+  function toast(msg, kind) {
+    const el = document.createElement("div");
+    el.className = "toast " + (kind || "");
+    el.textContent = msg;
+    els.toasts.appendChild(el);
+    setTimeout(() => el.classList.add("show"), 20);
+    setTimeout(() => { el.classList.remove("show"); setTimeout(() => el.remove(), 400); }, 3600);
+  }
+
+  // ---- Riff-repeater auto speed-up ----
+  // Grade each loop pass; 3 consecutive clean (≥95%) mic-scored passes bump the
+  // speed 10% toward full tempo — earn your way back to 100%.
+  function gradeLoopPass() {
+    const played = state.played - state.passMarkPlayed;
+    const hits = state.hits - state.passMarkHits;
+    state.passMarkPlayed = state.played;
+    state.passMarkHits = state.hits;
+    if (state.audioOn || !state.micOn || played < 4) return;   // listen mode doesn't count
+    if (hits / played >= 0.95) {
+      state.cleanPasses += 1;
+      if (window.Campaign) for (const ev of window.Campaign.onCleanPass(state.song)) campaignEvent(ev);
+      if (state.cleanPasses >= 3 && state.speed < 1) {
+        state.speed = Math.min(1, Math.round((state.speed + 0.1) * 20) / 20);
+        state.cleanPasses = 0;
+        els.speed.value = Math.round(state.speed * 100);
+        els.speedVal.textContent = Math.round(state.speed * 100) + "%";
+        toast(`⚡ 3 clean passes — speed up to ${Math.round(state.speed * 100)}%`, "good");
+        const wasPlaying = state.playing;
+        buildCurrentTimeline();
+        resetPlayback();
+        if (wasPlaying) togglePlay();
+      } else if (state.cleanPasses > 0 && state.speed < 1) {
+        toast(`Clean pass ${state.cleanPasses}/3`, "info");
+      }
+    } else {
+      state.cleanPasses = 0;
+    }
+  }
+
+  // ---- End-of-song results ----
+  function runIsRecordable() {
+    const fullRange = state.loopA <= 0.01 && state.loopB >= 0.99;
+    return fullRange && state.micOn && !state.audioOn && state.speed >= 1;
+  }
+
+  function finishRun() {
+    if (state.runShown || state.played < 5) return;
+    state.runShown = true;
+    flushPlayTime();
+    const acc = state.played ? Math.round((100 * state.hits) / state.played) : 0;
+    const run = { score: state.score, acc, maxCombo: state.maxCombo, perfects: state.perfects };
+    let rec = null, badge = "";
+    const recordable = runIsRecordable();
+    if (recordable) {
+      rec = window.Meta.recordRun(state.song, run);
+      if (rec.newBestScore || rec.newBestAcc) badge = "★ NEW BEST";
+    } else {
+      badge = state.audioOn ? "Listen mode — not recorded"
+        : state.speed < 1 ? `Practice at ${Math.round(state.speed * 100)}% — not recorded`
+        : !state.micOn ? "Mic off — not recorded"
+        : "Loop practice — not recorded";
+    }
+    // Campaign quest progress (warm-up + boss gate) for the step this song belongs to.
+    if (window.Campaign) {
+      for (const ev of window.Campaign.onRun(state.song, run, recordable, state.speed)) campaignEvent(ev);
+    }
+    showResults(run, rec, badge);
+    refreshCampaignUI();
+  }
+
+  function starsMarkup(n) {
+    let html = "";
+    for (let i = 1; i <= 5; i++) html += `<span class="star ${i <= n ? "on" : ""}">★</span>`;
+    return html;
+  }
+
+  function worstSection() {
+    let worst = null;
+    for (const s of state.sections) {
+      if (!s.played) continue;
+      const a = s.hits / s.played;
+      if (!worst || a < worst.a) worst = { s, a };
+    }
+    return worst ? worst.s : null;
+  }
+
+  function loopSection(s) {
+    if (!s || !state.songLength) return;
+    state.loopA = Math.max(0, (s.t0 - 1) / state.songLength);
+    state.loopB = Math.min(1, (s.t1 + 0.5) / state.songLength);
+    els.resultsModal.classList.add("hidden");
+    resetPlayback();
+    togglePlay();
+    toast("🔁 Looping section — 3 clean passes raises the speed", "info");
+  }
+
+  function showResults(run, rec, badge) {
+    els.resultsTitle.textContent = state.title || "Song complete";
+    els.resultsStars.innerHTML = starsMarkup(window.Meta.starsFor(run.acc));
+    els.resScore.textContent = run.score.toLocaleString();
+    els.resAcc.textContent = run.acc + "%";
+    els.resCombo.textContent = run.maxCombo;
+    els.resPerfect.textContent = run.perfects;
+    els.resultsBadge.textContent = badge;
+    els.resultsBadge.className = "results-badge" + (badge ? "" : " hidden") +
+      (badge.startsWith("★") ? " best" : " plain");
+    if (rec) {
+      const b = rec.prev;
+      els.resBest.textContent = b.score
+        ? `Previous best: ${b.score.toLocaleString()} pts · ${b.acc}% · combo ${b.combo}   (+${rec.xpGain} XP)`
+        : `First recorded run — the baseline is set. (+${rec.xpGain} XP)`;
+    } else {
+      const sb = window.Meta.songRec(state.song);
+      els.resBest.textContent = sb && sb.best.score
+        ? `Recorded best stays: ${sb.best.score.toLocaleString()} pts · ${sb.best.acc}%`
+        : "Play the full song with mic scoring at 100% speed to set a record.";
+    }
+    // section bars — click any to loop it
+    els.resSections.innerHTML = "";
+    state.sections.forEach((s, i) => {
+      const a = s.played ? s.hits / s.played : 0;
+      const div = document.createElement("div");
+      div.className = "section-bar";
+      div.title = `Section ${i + 1}: ${Math.round(a * 100)}% — click to loop`;
+      div.innerHTML = `<div class="section-fill" style="height:${Math.max(6, a * 100)}%;` +
+        `background:${a >= 0.9 ? "var(--good)" : a >= 0.7 ? "#ffd166" : "var(--bad)"}"></div>` +
+        `<span>${i + 1}</span>`;
+      div.addEventListener("click", () => loopSection(s));
+      els.resSections.appendChild(div);
+    });
+    els.resultsModal.classList.remove("hidden");
+    updateGoalRing();
+  }
+
+  els.resClose.addEventListener("click", () => els.resultsModal.classList.add("hidden"));
+  els.resReplay.addEventListener("click", () => {
+    els.resultsModal.classList.add("hidden");
+    resetPlayback(); togglePlay();
+  });
+  els.resLoopWorst.addEventListener("click", () => loopSection(worstSection()));
+
+  // ---- Stats / progression modal ----
+  function openStats() {
+    const p = window.Meta.profile;
+    const lvl = window.Meta.levelInfo();
+    const next = window.Meta.nextUp();
+    els.statsSummary.innerHTML =
+      `<div class="stat"><div class="stat-label">Level</div><div class="stat-val">${lvl.level}</div>` +
+      `<div class="xpbar"><div style="width:${Math.round((100 * lvl.into) / lvl.need)}%"></div></div></div>` +
+      `<div class="stat"><div class="stat-label">Streak</div><div class="stat-val">🔥 ${p.streak.cur}</div>` +
+      `<div class="stat-sub">best ${p.streak.best} · 🧊 ×${p.streak.freezes}</div></div>` +
+      `<div class="stat"><div class="stat-label">Today</div><div class="stat-val">${Math.floor(window.Meta.todayMinutes())}m</div>` +
+      `<div class="stat-sub">goal ${p.goalMin}m</div></div>` +
+      (next ? `<div class="stat next-up"><div class="stat-label">Next up</div>` +
+        `<div class="stat-val small">${next.title}</div>` +
+        `<div class="stat-sub">${window.Meta.TIER_NAMES[next.tier]} · ${starsMarkup(next.stars)}</div></div>` : "");
+    // calendar — last 10 weeks
+    els.statsCal.innerHTML = "";
+    for (const day of window.Meta.calendar(70)) {
+      const el = document.createElement("div");
+      el.className = "cal-day" + (day.met ? " met" : day.frozen ? " frozen" : day.min > 0 ? " some" : "");
+      el.title = `${day.date}: ${Math.round(day.min)} min` + (day.frozen ? " (freeze)" : "");
+      els.statsCal.appendChild(el);
+    }
+    // ladder — tiers with stars and a mini history sparkline
+    els.statsLadder.innerHTML = "";
+    const tiers = window.Meta.ladder();
+    for (let t = 1; t <= 5; t++) {
+      if (!tiers[t].length) continue;
+      const head = document.createElement("div");
+      head.className = "tier-head";
+      head.textContent = `Tier ${t} — ${window.Meta.TIER_NAMES[t]}`;
+      els.statsLadder.appendChild(head);
+      for (const s of tiers[t]) {
+        const row = document.createElement("div");
+        row.className = "ladder-row" + (s.plays ? "" : " unplayed");
+        const spark = s.hist.slice(-12).map((h) =>
+          `<i style="height:${Math.max(8, h.acc)}%"></i>`).join("");
+        row.innerHTML =
+          `<span class="ladder-title">${s.title}</span>` +
+          `<span class="spark">${spark}</span>` +
+          `<span class="ladder-stars">${starsMarkup(s.stars)}</span>`;
+        row.addEventListener("click", () => {
+          els.statsModal.classList.add("hidden");
+          loadSongByIndex(s.i);
+          for (const o of els.songSelect.options) if (+o.value === s.i) { els.songSelect.value = s.i; break; }
+        });
+        els.statsLadder.appendChild(row);
+      }
+    }
+    els.statsModal.classList.remove("hidden");
+  }
+  els.btnStats.addEventListener("click", openStats);
+  els.statsClose.addEventListener("click", () => els.statsModal.classList.add("hidden"));
+
+  // ---- Campaign ----
+  let campViewStep = null;   // step currently shown in the card (may differ from current)
+
+  // Second dropdown: the 10 steps, marked ✓ done / ▶ current / 🔒 locked.
+  function populateCampaign() {
+    if (!window.Campaign) return;
+    els.campSelect.innerHTML = "";
+    const cur = window.Campaign.current();
+    const head = document.createElement("option");
+    head.value = ""; head.textContent = "— Campaign —";
+    els.campSelect.appendChild(head);
+    for (const step of window.Campaign.STEPS) {
+      const v = window.Campaign.view(step);
+      const opt = document.createElement("option");
+      opt.value = step.n;
+      const mark = v.done ? "✓" : !v.unlocked ? "🔒" : step.n === cur.n ? "▶" : "•";
+      opt.textContent = `${mark} ${step.n}. ${step.title}${step.boss ? " ★" : ""}`;
+      opt.style.color = v.done ? "#38ef7d" : !v.unlocked ? "#5a637d" : "#e8eefc";
+      els.campSelect.appendChild(opt);
+    }
+  }
+
+  function openCampaignStep(step) {
+    const v = window.Campaign.view(step);
+    campViewStep = step;
+    const song = window.SONGS[v.songIndex];
+    els.campStepNum.textContent = `STEP ${step.n} / 10`;
+    els.campTitle.textContent = step.title;
+    els.campBoss.classList.toggle("hidden", !step.boss);
+    els.campSkill.textContent = step.skill;
+    els.campSong.textContent = song ? song.title : step.songId;
+    els.campPlay.disabled = !v.unlocked;
+    els.campPlay.textContent = v.unlocked ? "▶ Load & play" : "🔒 Locked";
+
+    // quests
+    els.campQuests.innerHTML = "";
+    for (const q of v.quests) {
+      const row = document.createElement("div");
+      row.className = "quest-row" + (q.done ? " done" : "");
+      const prog = q.target ? ` (${q.progress}/${q.target})` : "";
+      row.innerHTML = `<span class="quest-check">${q.done ? "✓" : "○"}</span>` +
+        `<span class="quest-desc">${q.desc}${q.done ? "" : prog}</span>`;
+      els.campQuests.appendChild(row);
+    }
+
+    // lessons
+    els.campLessons.innerHTML = "";
+    for (const l of step.lessons) {
+      const a = document.createElement("a");
+      a.className = "lesson-link";
+      a.href = l.url; a.target = "_blank"; a.rel = "noopener";
+      a.innerHTML = `<span>▶</span> ${l.label}`;
+      els.campLessons.appendChild(a);
+    }
+
+    // reward line
+    els.campReward.innerHTML = v.done
+      ? `<span class="reward-earned">🏅 Earned: ${v.badge} &nbsp;·&nbsp; step complete</span>`
+      : `<span class="muted">Reward: 🏅 ${v.badge} badge · ${step.boss ? 500 : 250} XP · 🧊 +1 streak freeze</span>`;
+
+    els.campPrev.disabled = step.n === 1;
+    els.campNext.disabled = step.n === 10;
+    els.campModal.classList.remove("hidden");
+  }
+
+  function refreshCampaignUI() {
+    populateCampaign();
+    if (!els.campModal.classList.contains("hidden") && campViewStep) {
+      openCampaignStep(campViewStep);   // live-refresh quest ticks while the card is open
+    }
+    // keep the dropdown reflecting the loaded song's step, if any
+    const s = window.Campaign && window.Campaign.stepForSong(state.song);
+    els.campSelect.value = s ? String(s.n) : "";
+  }
+
+  // A campaign event = a quest tick or a whole step cleared. Toast it loudly.
+  function campaignEvent(ev) {
+    if (ev.type === "quest") {
+      toast(`✅ Step ${ev.step.n}: ${ev.desc}`, "good");
+    } else if (ev.type === "step") {
+      toast(`🏅 Step ${ev.step.n} cleared — “${ev.badge}” earned! +${ev.xp} XP, +1 freeze`, "good");
+      if (ev.step.n === 10) setTimeout(() => toast("🏔️ THE TOWER STANDS — campaign complete.", "good"), 800);
+    }
+    updateGoalRing();
+  }
+
+  els.campSelect.addEventListener("change", () => {
+    const n = +els.campSelect.value;
+    if (!n) return;
+    openCampaignStep(window.Campaign.STEPS[n - 1]);
+  });
+  els.campClose.addEventListener("click", () => els.campModal.classList.add("hidden"));
+  els.campPrev.addEventListener("click", () => {
+    if (campViewStep && campViewStep.n > 1) openCampaignStep(window.Campaign.STEPS[campViewStep.n - 2]);
+  });
+  els.campNext.addEventListener("click", () => {
+    if (campViewStep && campViewStep.n < 10) openCampaignStep(window.Campaign.STEPS[campViewStep.n]);
+  });
+  els.campPlay.addEventListener("click", () => {
+    const v = window.Campaign.view(campViewStep);
+    if (!v.unlocked || v.songIndex < 0) return;
+    els.campModal.classList.add("hidden");
+    loadSongByIndex(v.songIndex);
+    els.songSelect.value = v.songIndex;
+    refreshCampaignUI();
+  });
+
+  // ---- Practice speed ----
+  els.speed.addEventListener("input", () => {
+    state.speed = (+els.speed.value) / 100;
+    els.speedVal.textContent = els.speed.value + "%";
+    state.cleanPasses = 0;
+    if (state.song) { buildCurrentTimeline(); resetPlayback(); }
+  });
 
   // ---- Wire up UI ----
   els.play.addEventListener("click", togglePlay);
@@ -1054,12 +1520,24 @@
     if (state.song) { buildCurrentTimeline(); resetPlayback(); }
   });
 
-  // Spacebar = play/pause (ignore when focused in the song menu)
+  // Spacebar = play/pause (ignore when focused in the song menu or a modal is up)
   window.addEventListener("keydown", (e) => {
-    if (e.code === "Space" && e.target.tagName !== "SELECT") {
+    if (e.code === "Escape") {
+      els.resultsModal.classList.add("hidden");
+      els.statsModal.classList.add("hidden");
+      els.campModal.classList.add("hidden");
+      return;
+    }
+    const modalOpen = !els.resultsModal.classList.contains("hidden") ||
+      !els.statsModal.classList.contains("hidden") ||
+      !els.campModal.classList.contains("hidden");
+    if (e.code === "Space" && e.target.tagName !== "SELECT" && !modalOpen) {
       e.preventDefault(); togglePlay();
     }
   });
+
+  // Bank any un-flushed practice minutes when the tab closes.
+  window.addEventListener("beforeunload", flushPlayTime);
 
   const searchEl = document.getElementById("songSearch");
   if (searchEl) searchEl.addEventListener("input", () => {
@@ -1087,5 +1565,7 @@
   loadSongByIndex(bootIdx);
   els.songSelect.value = bootIdx;
   els.hint.classList.remove("gone"); // keep hint until they interact
+  updateGoalRing();
+  populateCampaign();
   requestAnimationFrame(frame);
 })();

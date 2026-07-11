@@ -186,3 +186,168 @@ html, body {
   border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 10px; padding: 10px;
 }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+
+/* ---- Progression layer ---- */
+
+/* score line + combo multiplier in the top bar */
+.scoreline { font-size: 13px; color: var(--muted); }
+.scoreline #scoreVal { color: var(--text); font-weight: 800; }
+.mult { font-weight: 800; padding: 0 5px; border-radius: 6px; }
+.mult.m1 { color: var(--muted); }
+.mult.m2 { color: #ffd166; }
+.mult.m3 { color: #ff8e3c; }
+.mult.m4 { color: var(--accent2); text-shadow: 0 0 8px rgba(255, 77, 141, 0.7); }
+
+/* daily-goal ring + streak */
+.metabox { display: flex; align-items: center; gap: 10px; }
+#goalRing { width: 44px; height: 44px; transform: rotate(-90deg); }
+#goalRing .ring-bg { fill: none; stroke: rgba(255, 255, 255, 0.1); stroke-width: 4; }
+#goalRing .ring-fill {
+  fill: none; stroke: var(--accent); stroke-width: 4; stroke-linecap: round;
+  stroke-dasharray: 0 113; transition: stroke-dasharray 0.4s ease;
+}
+#goalRing text {
+  transform: rotate(90deg); transform-origin: 22px 22px;
+  fill: var(--text); font-size: 11px; font-weight: 700;
+}
+#goalRing.met .ring-fill { stroke: var(--good); filter: drop-shadow(0 0 6px rgba(56, 239, 125, 0.8)); }
+#goalRing.met text { fill: var(--good); }
+.streakbox { display: flex; align-items: center; gap: 3px; font-size: 15px; font-weight: 800; }
+
+/* results screen */
+.results-card { text-align: center; position: relative; }
+.results-badge {
+  display: inline-block; margin-bottom: 8px;
+  padding: 5px 14px; border-radius: 999px; font-size: 13px; font-weight: 800;
+}
+.results-badge.best {
+  background: linear-gradient(90deg, #ffd166, #ff8e3c); color: #1a1205;
+  box-shadow: 0 0 18px rgba(255, 209, 102, 0.5);
+  animation: pop 0.4s ease;
+}
+.results-badge.plain { background: rgba(255, 255, 255, 0.08); color: var(--muted); }
+.results-badge.hidden { display: none; }
+@keyframes pop { 0% { transform: scale(0.6); } 70% { transform: scale(1.12); } 100% { transform: scale(1); } }
+.results-stars { font-size: 34px; letter-spacing: 6px; margin: 6px 0 14px; }
+.star { color: rgba(255, 255, 255, 0.15); }
+.star.on { color: #ffd166; text-shadow: 0 0 14px rgba(255, 209, 102, 0.6); }
+.results-grid { display: flex; justify-content: center; gap: 26px; margin-bottom: 12px; }
+.stat .stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+.stat .stat-val { font-size: 26px; font-weight: 800; color: var(--text); }
+.stat .stat-val.small { font-size: 15px; }
+.stat .stat-sub { font-size: 12px; color: var(--muted); }
+.section-title { font-size: 13px; font-weight: 700; color: var(--muted); margin: 14px 0 8px; text-align: left; }
+.muted-inline { font-weight: 400; opacity: 0.7; }
+.sections { display: flex; gap: 8px; height: 74px; align-items: flex-end; }
+.section-bar {
+  flex: 1; height: 100%; position: relative; display: flex; align-items: flex-end;
+  background: rgba(255, 255, 255, 0.05); border-radius: 8px; overflow: hidden;
+  cursor: pointer; transition: background 0.15s;
+}
+.section-bar:hover { background: rgba(255, 255, 255, 0.12); }
+.section-fill { width: 100%; border-radius: 8px 8px 0 0; }
+.section-bar span {
+  position: absolute; bottom: 3px; left: 0; right: 0; text-align: center;
+  font-size: 10px; font-weight: 700; color: rgba(0, 0, 0, 0.7);
+}
+
+/* stats modal */
+.stats-card { max-height: 86vh; overflow-y: auto; }
+.stats-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.stats-summary { display: flex; gap: 26px; align-items: flex-start; flex-wrap: wrap; }
+.xpbar { width: 90px; height: 6px; background: rgba(255, 255, 255, 0.1); border-radius: 4px; margin-top: 6px; }
+.xpbar div { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); border-radius: 4px; }
+.next-up { max-width: 220px; text-align: left; }
+.calendar { display: grid; grid-template-columns: repeat(14, 1fr); gap: 4px; }
+.cal-day { aspect-ratio: 1; border-radius: 4px; background: rgba(255, 255, 255, 0.06); }
+.cal-day.some { background: rgba(41, 224, 200, 0.25); }
+.cal-day.met { background: var(--good); box-shadow: 0 0 6px rgba(56, 239, 125, 0.5); }
+.cal-day.frozen { background: #6ec6ff; }
+.tier-head {
+  font-size: 12px; font-weight: 800; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 1.5px; margin: 14px 0 6px;
+}
+.ladder-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 10px; border-radius: 8px; cursor: pointer;
+}
+.ladder-row:hover { background: rgba(255, 255, 255, 0.07); }
+.ladder-row.unplayed { opacity: 0.55; }
+.ladder-title { flex: 1; font-size: 14px; font-weight: 600; text-align: left; }
+.ladder-stars { font-size: 14px; letter-spacing: 2px; }
+.spark { display: flex; align-items: flex-end; gap: 2px; height: 20px; width: 60px; }
+.spark i { flex: 1; background: var(--accent); border-radius: 1px; opacity: 0.75; }
+
+/* toasts */
+#toasts {
+  position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%);
+  display: flex; flex-direction: column; gap: 8px; z-index: 100; pointer-events: none;
+}
+.toast {
+  background: var(--bg2); border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--text); font-size: 14px; font-weight: 600;
+  padding: 10px 18px; border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  opacity: 0; transform: translateY(12px); transition: all 0.35s ease;
+}
+.toast.show { opacity: 1; transform: translateY(0); }
+.toast.good { border-color: rgba(56, 239, 125, 0.5); }
+.toast.info { border-color: rgba(41, 224, 200, 0.4); }
+
+/* ---- Campaign ---- */
+.camp-card { max-height: 88vh; overflow-y: auto; }
+.camp-stepnum { font-size: 11px; font-weight: 800; letter-spacing: 2px; color: var(--accent); }
+.camp-boss {
+  display: inline-block; margin-bottom: 8px;
+  padding: 3px 12px; border-radius: 999px; font-size: 12px; font-weight: 800;
+  background: linear-gradient(90deg, #ff8e3c, var(--accent2)); color: #1a1205;
+}
+.camp-boss.hidden { display: none; }
+.camp-skill { color: var(--text); line-height: 1.55; margin: 4px 0 14px; }
+.camp-song {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 12px 14px; margin-bottom: 6px;
+  background: rgba(255, 255, 255, 0.05); border-radius: 12px;
+}
+.camp-song b { font-size: 15px; }
+.camp-song .btn { margin-left: auto; }
+.camp-quests { display: flex; flex-direction: column; gap: 8px; }
+.quest-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.quest-row.done { border-color: rgba(56, 239, 125, 0.4); background: rgba(56, 239, 125, 0.08); }
+.quest-check { font-size: 16px; font-weight: 800; color: var(--muted); width: 18px; text-align: center; }
+.quest-row.done .quest-check { color: var(--good); }
+.quest-desc { font-size: 14px; }
+.camp-lessons { display: flex; flex-direction: column; gap: 6px; }
+.lesson-link {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 12px; border-radius: 10px;
+  color: var(--accent); text-decoration: none; font-size: 14px; font-weight: 600;
+  background: rgba(41, 224, 200, 0.08);
+  transition: background 0.15s;
+}
+.lesson-link:hover { background: rgba(41, 224, 200, 0.16); }
+.lesson-link span { opacity: 0.8; }
+.camp-reward { margin-top: 14px; font-size: 13px; }
+.reward-earned { color: var(--good); font-weight: 700; }
+.camp-nav { display: flex; justify-content: space-between; gap: 10px; margin-top: 18px; }
+.camp-nav .btn:disabled { opacity: 0.35; cursor: default; }
+.camp-nav .btn:disabled:hover { background: rgba(255, 255, 255, 0.06); transform: none; }
+#campPlay:disabled { opacity: 0.5; cursor: default; }
+
+/* second dropdown sized like the first */
+#campSelect {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 13px; font-weight: 600;
+  max-width: 230px;
+  cursor: pointer;
+}
+#campSelect option { background: var(--bg2); color: var(--text); }

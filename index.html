@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>FretFall — Guitar Trainer</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
-  <link rel="stylesheet" href="styles.css?v=1783201354837" />
+  <link rel="stylesheet" href="styles.css?v=1783738000001" />
 </head>
 <body>
   <div id="app">
@@ -26,6 +26,10 @@
           <label>BPM <span id="bpmVal">90</span></label>
           <input id="bpm" type="range" min="20" max="220" value="90" />
         </div>
+        <div class="bpm speed">
+          <label>Speed <span id="speedVal">100%</span></label>
+          <input id="speed" type="range" min="50" max="100" step="5" value="100" />
+        </div>
         <div class="songpick">
           <label>Song</label>
           <div style="display:flex;align-items:center;gap:6px">
@@ -34,10 +38,26 @@
                    style="width:110px;background:#141a2e;color:#e8eefc;border:1px solid #2a3352;border-radius:8px;padding:6px 8px;font-size:13px" />
           </div>
         </div>
+        <div class="songpick">
+          <label>Campaign</label>
+          <select id="campSelect" title="The 10-step path from intermediate to mastery"></select>
+        </div>
         <span id="capoBadge" class="capo-badge" style="display:none">Capo 0</span>
+      </div>
+      <div class="metabox">
+        <svg id="goalRing" viewBox="0 0 44 44" title="Daily goal">
+          <circle class="ring-bg" cx="22" cy="22" r="18"></circle>
+          <circle id="ringFill" class="ring-fill" cx="22" cy="22" r="18"></circle>
+          <text id="ringText" x="22" y="26" text-anchor="middle">0m</text>
+        </svg>
+        <div class="streakbox" title="Practice streak (freezes cover a missed day)">
+          <span id="streakFlame">🔥</span><span id="streakVal">0</span>
+        </div>
+        <button id="btnStats" class="btn" title="Progress, records & streak calendar">📊</button>
       </div>
       <div class="scorebox">
         <div class="score"><span id="accuracy">100%</span></div>
+        <div class="scoreline">Score <span id="scoreVal">0</span> <span id="multVal" class="mult">×1</span></div>
         <div class="combo"><span id="hitCount">0</span>/<span id="playedCount">0</span> notes</div>
         <div class="detected">Heard: <span id="detected">—</span></div>
       </div>
@@ -59,10 +79,80 @@
     </main>
   </div>
 
-  <script src="js/songs.js?v=1783201354837"></script>
-  <script src="js/chordShapes.js?v=1783201354837"></script>
-  <script src="js/tabParser.js?v=1783201354837"></script>
-  <script src="js/pitch.js?v=1783201354837"></script>
-  <script src="js/app.js?v=1783201354837"></script>
+  <!-- End-of-song results -->
+  <div id="resultsModal" class="modal hidden">
+    <div class="modal-card results-card">
+      <div id="resultsBadge" class="results-badge hidden"></div>
+      <h3 id="resultsTitle">Song complete</h3>
+      <div id="resultsStars" class="results-stars"></div>
+      <div class="results-grid">
+        <div class="stat"><div class="stat-label">Score</div><div id="resScore" class="stat-val">0</div></div>
+        <div class="stat"><div class="stat-label">Accuracy</div><div id="resAcc" class="stat-val">0%</div></div>
+        <div class="stat"><div class="stat-label">Max combo</div><div id="resCombo" class="stat-val">0</div></div>
+        <div class="stat"><div class="stat-label">Perfects</div><div id="resPerfect" class="stat-val">0</div></div>
+      </div>
+      <div id="resBest" class="muted"></div>
+      <div class="section-title">Accuracy by section <span class="muted-inline">(click one to loop it)</span></div>
+      <div id="resSections" class="sections"></div>
+      <div class="modal-actions">
+        <button id="resLoopWorst" class="btn">🔁 Loop worst section</button>
+        <button id="resReplay" class="btn">⟲ Play again</button>
+        <button id="resClose" class="btn primary">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Progress / stats -->
+  <div id="statsModal" class="modal hidden">
+    <div class="modal-card stats-card">
+      <div class="stats-head">
+        <h3>Your progress</h3>
+        <button id="statsClose" class="btn">✕</button>
+      </div>
+      <div id="statsSummary" class="stats-summary"></div>
+      <div class="section-title">Practice calendar</div>
+      <div id="statsCal" class="calendar"></div>
+      <div class="section-title">Song ladder <span class="muted-inline">(3★ a song to clear it — climb tier by tier)</span></div>
+      <div id="statsLadder" class="ladder"></div>
+    </div>
+  </div>
+
+  <!-- Campaign step card -->
+  <div id="campModal" class="modal hidden">
+    <div class="modal-card camp-card">
+      <div class="stats-head">
+        <div>
+          <div id="campStepNum" class="camp-stepnum">STEP 1 / 10</div>
+          <h3 id="campTitle">Rhythm Command</h3>
+        </div>
+        <button id="campClose" class="btn">✕</button>
+      </div>
+      <div id="campBoss" class="camp-boss hidden">★ BOSS STEP</div>
+      <p id="campSkill" class="camp-skill"></p>
+      <div class="camp-song">
+        <span class="muted">Song:</span> <b id="campSong">—</b>
+        <button id="campPlay" class="btn primary">▶ Load &amp; play</button>
+      </div>
+      <div class="section-title">Quests <span class="muted-inline">(complete all 3 to clear the step)</span></div>
+      <div id="campQuests" class="camp-quests"></div>
+      <div class="section-title">Lessons</div>
+      <div id="campLessons" class="camp-lessons"></div>
+      <div id="campReward" class="camp-reward"></div>
+      <div class="camp-nav">
+        <button id="campPrev" class="btn">‹ Previous step</button>
+        <button id="campNext" class="btn">Next step ›</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toasts"></div>
+
+  <script src="js/songs.js?v=1783738000001"></script>
+  <script src="js/chordShapes.js?v=1783738000001"></script>
+  <script src="js/tabParser.js?v=1783738000001"></script>
+  <script src="js/pitch.js?v=1783738000001"></script>
+  <script src="js/meta.js?v=1783738000001"></script>
+  <script src="js/campaign.js?v=1783738000001"></script>
+  <script src="js/app.js?v=1783738000001"></script>
 </body>
 </html>
