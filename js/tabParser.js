@@ -42,8 +42,10 @@
     if (quality.startsWith("sus2")) third = 2;
     if (quality.startsWith("sus4") || quality === "sus") third = 5;
 
-    const pcs = new Set([root, (root + third) % 12, (root + fifth) % 12]);
+    const pcs = quality.startsWith("5") ? new Set([root, (root + 7) % 12]) : new Set([root, (root + third) % 12, (root + fifth) % 12]);
     if (/7/.test(quality)) pcs.add((root + (quality.includes("maj7") ? 11 : 10)) % 12);
+    if (/add9|add2|(^|[^1])9/.test(quality)) pcs.add((root + 2) % 12);
+    if (/(^|m)6/.test(quality)) pcs.add((root + 9) % 12);
 
     // bass note from slash, if present and valid
     if (parts[1]) {

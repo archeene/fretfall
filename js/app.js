@@ -56,6 +56,11 @@
     detectedPC: -1,
     detectedName: "—",
     pcHistory: [],      // recent raw pitch classes, for stability gating
+    onsets: [],         // detected strums: {t, wall, chroma, frames, done, used}
+    fluxHist: [],       // recent spectral-flux values for the adaptive onset threshold
+    lastOnsetWall: 0,
+    chordSets: [],      // distinct chords in the current song: {name, pcs}
+    heardChord: "",     // last chord the strict scorer heard (HUD)
     audioOn: false,     // backing-track playback
     audioCtx: null,
     audioMaster: null,
@@ -79,7 +84,25 @@
 
   // ---- Layout constants ----
   const LEAD_SECONDS = 3;       // how far ahead a note is visible above hit line
-  const HIT_WINDOW = 0.45;      // +/- seconds counted as a hit (timing tolerance)
+  const HIT_WINDOW = 0.45;      // display only: how early a chord name lights up
+  // ---- Strict scoring ----
+  // A chord strum counts only when (a) you actually strummed: a new onset within
+  // STRUM_WIN of the beat, and (b) the chord ringing right after that strum is the
+  // expected one: its tones carry most of the energy, all of them sound, and it
+  // matches better than any other chord in the song. A held chord or a single
+  // shared note no longer scores.
+  const STRUM_WIN = 0.15;        // +/- seconds around the beat (narrower on fast strums)
+  const STRUM_PERFECT = 0.05;    // Perfect = within 50 ms
+  const NOTE_WIN = 0.25;         // single-note tolerance
+  const INPUT_LATENCY = 0.045;   // mic path delay subtracted from onset times
+  const CHROMA_FROM = 0.04;      // read the chord from 40 ms...
+  const CHROMA_TO = 0.2;         // ...to 200 ms after the strum
+  const CHORD_IN_FRAC = 0.5;     // share of sounding energy that must be chord tones
+  const TONE_PRESENT = 0.15;     // a chord tone "sounds" at >= 15% of the loudest chord tone
+  const CHORD_BEAT = 0.92;       // expected chord must score >= 92% of the best song chord
+  const FLUX_MIN = 4;            // absolute onset floor (log-flux units)
+  const FLUX_RATIO = 2.2;        // onset = flux jumps above 2.2x its recent average
+  const ONSET_GAP_MS = 120;      // ignore re-triggers within one strum (strings ring in over ~50 ms)
   const LANES = 6;
   const LANE_COLORS = ["#29e0c8", "#ff4d8d", "#ffd166", "#7c5cff", "#38ef7d", "#ff8e3c"];
 
@@ -279,6 +302,19 @@
     state.songLength = state.notes.length
       ? state.notes[state.notes.length - 1].time + LEAD_SECONDS
       : 0;
+    // Strict-scoring prep: each strum's window never overlaps its neighbours, and
+    // the song's distinct chords are the candidates a strum is compared against.
+    const strums = state.notes.filter((n) => n.isStrum);
+    const sets = new Map();
+    strums.forEach((n, i) => {
+      const gp = i > 0 ? n.time - strums[i - 1].time : Infinity;
+      const gn = i < strums.length - 1 ? strums[i + 1].time - n.time : Infinity;
+      n.win = Math.min(STRUM_WIN, 0.5 * Math.min(gp, gn));
+      const key = [...n.pcs].sort((a, b) => a - b).join(",");
+      if (n.pcs.length && !sets.has(key)) sets.set(key, { name: n.name, pcs: n.pcs, key });
+    });
+    state.chordSets = [...sets.values()];
+    state.onsets = [];
     buildSections();
   }
 
@@ -344,6 +380,7 @@
     state.runShown = false;
     state.passMarkHits = 0; state.passMarkPlayed = 0; state.cleanPasses = 0;
     for (const s of state.sections) { s.hits = 0; s.played = 0; }
+    state.onsets = [];
     state.notes.forEach((n) => { n.flash = 0; n.hit = false; n.judged = n.time < startT; });
     els.play.textContent = "▶ Play";
     stopAllAudio();
@@ -389,6 +426,7 @@
       n.hit = false;
     }
     state.combo = 0;
+    state.onsets = [];
     stopAllAudio();
     state.audioPtr = audioPtrFor(newT);
     updateHud();
@@ -416,6 +454,86 @@
     if (s) { s.played++; if (hit) s.hits++; }
   }
 
+  // Score one strum: find the strum onset nearest its beat, then check the chord
+  // that rang out of it. Waits until that chord read is complete.
+  function judgeStrum(n, t) {
+    const w = n.win || STRUM_WIN;
+    // Every unused onset inside the window is a candidate (a stray re-trigger may
+    // sit next to the real strum); the nearest one that rang the right chord wins.
+    const cands = state.onsets.filter((o) => !o.used && Math.abs(o.t - n.time) <= w)
+      .sort((a, b) => Math.abs(a.t - n.time) - Math.abs(b.t - n.time));
+    // Decide once the window has closed and every candidate's chord read is in.
+    if (cands.length && t > n.time + w) {
+      if (!cands.every((o) => o.done)) return;
+      let best = cands[0], v = null;
+      for (const o of cands) {
+        const r = chordVerdict(o.chroma, o.frames, n.pcs);
+        if (!v) v = r;
+        if (r.ok) { best = o; v = r; break; }
+      }
+      best.used = true;
+      n.judged = true; n.flash = 1; state.played++;
+      if (window.__ffPeaks) n.dbg = { chroma: Array.from(best.chroma), frames: best.frames, dt: best.t - n.time, peaks: best.peaks };
+      state.heardChord = v.ok ? n.name : (v.heard || "?");
+      if (!v.ok) {
+        n.hit = false; state.combo = 0;
+        creditSection(n.time, false);
+        addFloater(n.lane, v.heard && v.heard !== n.name ? "Heard " + v.heard : "Unclear", "#ff5b6e");
+        updateHud();
+        return;
+      }
+      const delta = best.t - n.time;
+      n.hit = true; state.hits++;
+      creditSection(n.time, true);
+      const perfect = Math.abs(delta) <= STRUM_PERFECT;
+      if (perfect) state.perfects++;
+      addFloater(n.lane, perfect ? "Perfect" : delta > 0 ? "Late" : "Early",
+        perfect ? "#29e0c8" : "#ffd166");
+      state.score += Math.round((50 + 50 * (1 - Math.abs(delta) / w)) * multiplier());
+      state.combo += 1; state.maxCombo = Math.max(state.maxCombo, state.combo);
+      updateHud();
+      return;
+    }
+    if (!cands.length && t > n.time + w + 0.02) {
+      n.judged = true; n.hit = false; n.flash = 1;
+      state.combo = 0; state.played++;
+      creditSection(n.time, false);
+      addFloater(n.lane, "Miss", "#ff5b6e");
+      updateHud();
+    }
+  }
+
+  // Is this chroma the expected chord? Returns {ok, heard} where heard is the
+  // song chord it most resembles (for feedback like "Heard Em").
+  function chordVerdict(c, frames, pcs) {
+    let tot = 0;
+    for (let i = 0; i < 12; i++) tot += c[i];
+    if (!frames || tot <= 0 || !pcs.length) return { ok: false, heard: "" };
+    const shift = (set) => set.map((pc) => (pc + state.capo) % 12);
+    let norm = 0;
+    for (let i = 0; i < 12; i++) norm += c[i] * c[i];
+    norm = Math.sqrt(norm);
+    const cos = (set) => set.reduce((a, pc) => a + c[pc], 0) / (Math.sqrt(set.length) * norm);
+    const exp = shift(pcs);
+    let inE = 0, maxIn = 0;
+    for (const pc of exp) { inE += c[pc]; maxIn = Math.max(maxIn, c[pc]); }
+    const present = exp.filter((pc) => c[pc] >= TONE_PRESENT * maxIn).length;
+    const need = exp.length <= 3 ? exp.length : exp.length - 1;
+    const expCos = cos(exp);
+    let bestCos = expCos, heard = null;
+    for (const s of state.chordSets) {
+      const sc = cos(shift(s.pcs));
+      if (sc > bestCos + 1e-9) { bestCos = sc; heard = s.name; }
+    }
+    const beatsOthers = expCos >= CHORD_BEAT * bestCos;
+    // The chord's tones must also be the loudest notes: all needed tones rank
+    // within the top (tones + 1) pitch classes. Stops one loud note plus noise.
+    const top = [...Array(12).keys()].sort((a, b) => c[b] - c[a]).slice(0, exp.length + 1);
+    const ranked = exp.filter((pc) => top.includes(pc)).length;
+    const ok = inE / tot >= CHORD_IN_FRAC && present >= need && ranked >= need && beatsOthers;
+    return { ok, heard: ok ? "" : heard || "" };
+  }
+
   function judge(t) {
     for (const n of state.notes) {
       if (n.judged) continue;
@@ -431,8 +549,9 @@
         updateHud();
         continue;
       }
+      if (n.isStrum) { judgeStrum(n, t); continue; }
       // Missed window entirely
-      if (t > n.time + HIT_WINDOW) {
+      if (t > n.time + NOTE_WIN) {
         n.judged = true; n.hit = false;
         state.combo = 0;
         state.played++;
@@ -443,7 +562,7 @@
         continue;
       }
       // Inside window and player is sounding a matching tone
-      if (Math.abs(t - n.time) <= HIT_WINDOW && state.detectedPC >= 0) {
+      if (Math.abs(t - n.time) <= NOTE_WIN && state.detectedPC >= 0) {
         // With a capo, the fingered shape sounds `capo` semitones higher than written.
         if (n.pcs.some((pc) => (pc + state.capo) % 12 === state.detectedPC)) {
           n.judged = true; n.hit = true; n.flash = 1;
@@ -453,7 +572,7 @@
           const grade = gradeFor(delta);
           if (grade.perfect) state.perfects++;
           addFloater(n.lane, grade.text, grade.color);
-          const closeness = 1 - Math.abs(delta) / HIT_WINDOW;
+          const closeness = 1 - Math.abs(delta) / NOTE_WIN;
           state.score += Math.round((50 + 50 * closeness) * multiplier());
           state.combo += 1;
           state.maxCombo = Math.max(state.maxCombo, state.combo);
@@ -520,11 +639,73 @@
     els.mic.classList.remove("active");
   }
 
+  // Strum onsets: spectral flux spiking above its recent average. Each onset then
+  // collects chroma for CHROMA_FROM..CHROMA_TO seconds (or until the next strum).
+  function detectOnsets(rms) {
+    const det = state.detector;
+    const f = det.flux();
+    const hist = state.fluxHist;
+    // trimmed mean: drop the 4 largest frames so the previous strum's own spike
+    // doesn't hide a soft up-strum right after it
+    const trim = hist.slice().sort((a, b) => a - b).slice(0, Math.max(1, hist.length - 4));
+    const mean = trim.reduce((a, b) => a + b, 0) / trim.length;
+    hist.push(f);
+    if (hist.length > 20) hist.shift();
+    const now = performance.now();
+    if (state.playing && rms >= det.rmsGate && f > FLUX_MIN && f > mean * FLUX_RATIO &&
+        now - state.lastOnsetWall > ONSET_GAP_MS) {
+      state.lastOnsetWall = now;
+      state.onsets.push({ t: songTime() - INPUT_LATENCY, wall: now,
+        chroma: new Float32Array(12), frames: 0, done: false, used: false });
+    }
+    const ons = state.onsets;
+    for (const o of ons) {
+      if (o.done) continue;
+      const age = (now - o.wall) / 1000;
+      if (age > CHROMA_TO) { o.done = true; continue; }
+      if (age >= CHROMA_FROM) {
+        const pk = det.peaks();
+        const c = peaksToChroma(pk);
+        for (let i = 0; i < 12; i++) o.chroma[i] += c[i];
+        o.frames++;
+        if (window.__ffPeaks) (o.peaks || (o.peaks = [])).push(pk);
+      }
+    }
+    if (ons.length > 64) state.onsets = ons.filter((o) => !o.used).slice(-32);
+  }
+
+  // Peaks -> 12-bin chroma (C=0), harmonic-aware. A guitar string rings strong
+  // overtones (the 3rd partial of B is an F#, of D an A), which would read as wrong
+  // notes. Walking peaks from low to high, any peak on an integer multiple of a
+  // lower accepted note is folded into that note at half weight instead.
+  const HARM_TOL = 0.015, HARM_MAX_K = 8, HARM_W = 0.5;
+  function peaksToChroma(pk) {
+    const out = new Float32Array(12);
+    const fund = [];
+    const sorted = pk.slice().sort((a, b) => a.f - b.f);
+    for (const p of sorted) {
+      let owner = null;
+      for (const q of fund) {
+        const k = p.f / q.f, kr = Math.round(k);
+        if (kr >= 2 && kr <= HARM_MAX_K && Math.abs(k - kr) / kr < HARM_TOL) { owner = q; break; }
+      }
+      if (owner) { out[owner.pc] += p.a * HARM_W; continue; }
+      const midi = 12 * Math.log2(p.f / 440) + 69;
+      const r = Math.round(midi);
+      if (Math.abs(midi - r) > 0.35) continue;      // between semitones = leakage
+      const pc = ((r % 12) + 12) % 12;
+      fund.push({ f: p.f, pc });
+      out[pc] += p.a;
+    }
+    return out;
+  }
+
   const VOTE_WINDOW = 6;   // frames to vote over (~100ms)
   const VOTE_MIN = 2;      // a pitch class must win at least this many votes
   function pollMic() {
     if (!state.micOn) return;
-    const { freq } = state.detector.detect();
+    const { freq, rms } = state.detector.detect();
+    detectOnsets(rms);
     const raw = freq > 0 ? window.freqToPitchClass(freq) : -1;
 
     state.pcHistory.push(raw);
@@ -542,6 +723,8 @@
     const ok = bestN >= VOTE_MIN;
     state.detectedPC = ok ? bestPc : -1;
     state.detectedName = ok ? window.TabParser.pcName(bestPc) : "—";
+    // Chord songs: show the chord the strict scorer last heard instead of one note.
+    if (state.heardChord && state.notes.length && state.notes[0].isStrum) state.detectedName = state.heardChord;
     els.detected.textContent = state.detectedName;
   }
 
@@ -1615,5 +1798,7 @@
   els.hint.classList.remove("gone"); // keep hint until they interact
   updateGoalRing();
   populateCampaign();
+  // Test hook for the headless scoring harness (read-only use in the app itself).
+  window.FretFallDebug = { state: () => state, loadSongByIndex, togglePlay, enableMic, chordVerdict };
   requestAnimationFrame(frame);
 })();

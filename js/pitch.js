@@ -25,7 +25,17 @@
       const src = this.audioCtx.createMediaStreamSource(this.stream);
       this.analyser = this.audioCtx.createAnalyser();
       this.analyser.fftSize = 2048;
+      this.analyser.smoothingTimeConstant = 0;   // raw spectra for onset flux
       src.connect(this.analyser);
+      // Long window for chord chroma: 8192 samples gives ~5.9 Hz bins at 48 kHz,
+      // fine enough to separate semitones down to the low strings.
+      this.chromaAn = this.audioCtx.createAnalyser();
+      this.chromaAn.fftSize = 8192;
+      this.chromaAn.smoothingTimeConstant = 0;
+      src.connect(this.chromaAn);
+      this.specBuf = new Float32Array(this.analyser.frequencyBinCount);
+      this.prevSpec = new Float32Array(this.analyser.frequencyBinCount);
+      this.chromaBuf = new Float32Array(this.chromaAn.frequencyBinCount);
       // Critical: a freshly created AudioContext can start "suspended", in which
       // case the analyser only ever sees silence. Resume it (we're in a click).
       if (this.audioCtx.state === "suspended") await this.audioCtx.resume();
@@ -94,6 +104,47 @@
       return { freq, rms, clarity };
     }
   }
+
+  // Spectral flux: how much NEW energy appeared since the last frame. A strum
+  // re-excites the strings, so flux spikes even over a still-ringing chord.
+  PitchDetector.prototype.flux = function () {
+    if (!this.running) return 0;
+    const sp = this.specBuf, prev = this.prevSpec;
+    this.analyser.getFloatFrequencyData(sp);
+    const hzPerBin = this.audioCtx.sampleRate / this.analyser.fftSize;
+    const hi = Math.min(sp.length, Math.round(5000 / hzPerBin));
+    let f = 0;
+    for (let i = 2; i < hi; i++) {
+      const v = Math.log1p(100 * Math.pow(10, sp[i] / 20));   // log-compressed magnitude
+      const d = v - prev[i];
+      if (d > 0) f += d;
+      prev[i] = v;
+    }
+    return f;
+  };
+
+  // Spectral peaks between 70 Hz and 2 kHz: [{f, a}] with linear amplitude.
+  PitchDetector.prototype.peaks = function () {
+    const out = [];
+    if (!this.running) return out;
+    const sp = this.chromaBuf;
+    this.chromaAn.getFloatFrequencyData(sp);
+    const hzPerBin = this.audioCtx.sampleRate / this.chromaAn.fftSize;
+    const lo = Math.max(2, Math.floor(70 / hzPerBin));
+    const hi = Math.min(sp.length - 2, Math.ceil(2000 / hzPerBin));
+    let peakDb = -Infinity;
+    for (let i = lo; i < hi; i++) if (sp[i] > peakDb) peakDb = sp[i];
+    const floor = peakDb - 40;                       // ignore partials 40 dB under the loudest
+    for (let i = lo; i < hi; i++) {
+      const v = sp[i];
+      if (v < floor || v <= sp[i - 1] || v < sp[i + 1]) continue;   // local maxima only
+      const a = sp[i - 1], c = sp[i + 1];
+      const den = a - 2 * v + c;
+      const off = den ? 0.5 * (a - c) / den : 0;     // parabolic peak interpolation
+      out.push({ f: (i + off) * hzPerBin, a: Math.pow(10, v / 20) });
+    }
+    return out;
+  };
 
   // Hz -> pitch class (0..11, C=0). Returns -1 if invalid.
   function freqToPitchClass(freq) {
