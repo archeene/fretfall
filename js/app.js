@@ -98,7 +98,8 @@
   const CHROMA_FROM = 0.04;      // read the chord from 40 ms...
   const CHROMA_TO = 0.2;         // ...to 200 ms after the strum
   const CHORD_IN_FRAC = 0.5;     // share of sounding energy that must be chord tones
-  const TONE_PRESENT = 0.15;     // a chord tone "sounds" at >= 15% of the loudest chord tone
+  const TONE_PRESENT = 0.25;     // a chord tone "sounds" at >= 25% of the loudest chord tone
+  const OUT_MAX = 0.6;           // no non-chord note may reach 60% of the loudest chord tone
   const CHORD_BEAT = 0.92;       // expected chord must score >= 92% of the best song chord
   const FLUX_MIN = 4;            // absolute onset floor (log-flux units)
   const FLUX_RATIO = 2.2;        // onset = flux jumps above 2.2x its recent average
@@ -518,7 +519,9 @@
     let inE = 0, maxIn = 0;
     for (const pc of exp) { inE += c[pc]; maxIn = Math.max(maxIn, c[pc]); }
     const present = exp.filter((pc) => c[pc] >= TONE_PRESENT * maxIn).length;
-    const need = exp.length <= 3 ? exp.length : exp.length - 1;
+    const need = exp.length;                       // every chord tone must sound
+    let out = 0;
+    for (let i = 0; i < 12; i++) if (!exp.includes(i)) out = Math.max(out, c[i]);
     const expCos = cos(exp);
     let bestCos = expCos, heard = null;
     for (const s of state.chordSets) {
@@ -530,7 +533,8 @@
     // within the top (tones + 1) pitch classes. Stops one loud note plus noise.
     const top = [...Array(12).keys()].sort((a, b) => c[b] - c[a]).slice(0, exp.length + 1);
     const ranked = exp.filter((pc) => top.includes(pc)).length;
-    const ok = inE / tot >= CHORD_IN_FRAC && present >= need && ranked >= need && beatsOthers;
+    const ok = inE / tot >= CHORD_IN_FRAC && present >= need && ranked >= need &&
+      out <= OUT_MAX * maxIn && beatsOthers;
     return { ok, heard: ok ? "" : heard || "" };
   }
 
