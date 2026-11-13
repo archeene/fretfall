@@ -91,18 +91,18 @@
   // expected one: its tones carry most of the energy, all of them sound, and it
   // matches better than any other chord in the song. A held chord or a single
   // shared note no longer scores.
-  const STRUM_WIN = 0.15;        // +/- seconds around the beat (narrower on fast strums)
-  const STRUM_PERFECT = 0.05;    // Perfect = within 50 ms
+  const STRUM_WIN = 0.2;         // +/- seconds around the beat (narrower on fast strums)
+  const STRUM_PERFECT = 0.07;    // Perfect = within 70 ms
   const NOTE_WIN = 0.25;         // single-note tolerance
   const INPUT_LATENCY = 0.045;   // mic path delay subtracted from onset times
   const CHROMA_FROM = 0.04;      // read the chord from 40 ms...
   const CHROMA_TO = 0.2;         // ...to 200 ms after the strum
   const CHORD_IN_FRAC = 0.5;     // share of sounding energy that must be chord tones
-  const TONE_PRESENT = 0.25;     // a chord tone "sounds" at >= 25% of the loudest chord tone
-  const OUT_MAX = 0.6;           // no non-chord note may reach 60% of the loudest chord tone
+  const TONE_PRESENT = 0.2;      // a chord tone "sounds" at >= 20% of the loudest chord tone
+  const OUT_MAX = 0.75;          // no non-chord note may reach 75% of the loudest chord tone
   const CHORD_BEAT = 0.92;       // expected chord must score >= 92% of the best song chord
   const FLUX_MIN = 4;            // absolute onset floor (log-flux units)
-  const FLUX_RATIO = 2.2;        // onset = flux jumps above 2.2x its recent average
+  const FLUX_RATIO = 1.9;        // onset = flux jumps above 1.9x its recent average
   const ONSET_GAP_MS = 120;      // ignore re-triggers within one strum (strings ring in over ~50 ms)
   const LANES = 6;
   const LANE_COLORS = ["#29e0c8", "#ff4d8d", "#ffd166", "#7c5cff", "#38ef7d", "#ff8e3c"];
@@ -519,7 +519,7 @@
     let inE = 0, maxIn = 0;
     for (const pc of exp) { inE += c[pc]; maxIn = Math.max(maxIn, c[pc]); }
     const present = exp.filter((pc) => c[pc] >= TONE_PRESENT * maxIn).length;
-    const need = exp.length;                       // every chord tone must sound
+    const need = exp.length <= 3 ? exp.length : exp.length - 1;   // 4-note chords may drop one
     let out = 0;
     for (let i = 0; i < 12; i++) if (!exp.includes(i)) out = Math.max(out, c[i]);
     const expCos = cos(exp);
